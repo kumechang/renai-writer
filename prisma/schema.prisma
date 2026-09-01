@@ -1,0 +1,79 @@
+// 調査員が収集したWebリサーチ情報を、ライターが記事執筆に使いやすい形で
+// 蓄積するためのスキーマ。編集者(企画)・ライター(執筆)は将来的にこのデータを
+// 消費する側として連携する想定。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 調査テーマ（編集者の企画に対応する調査単位）
+model Topic {
+  id        String   @id @default(cuid())
+  title     String
+  // 記事の切り口・想定読者など、調査員が集めるべき情報の方向性
+  theme     String?
+  // 編集者からの調査依頼メモ（将来、企画立案機能と接続する想定）
+  brief     String?
+  // collecting: 収集中 / ready: ライターに提供可能 / archived: 使用終了
+  status    String   @default("collecting")
+  items     ResearchItem[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 収集元（同一URLは複数トピックから参照されうるため独立管理）
+model Source {
+  id          String   @id @default(cuid())
+  url         String   @unique
+  domain      String
+  title       String?
+  author      String?
+  siteName    String?
+  publishedAt DateTime?
+  fetchedAt   DateTime @default(now())
+  items       ResearchItem[]
+}
+
+// 調査員が収集した個別データ（ライターが直接参照する最小単位）
+model ResearchItem {
+  id           String   @id @default(cuid())
+  topicId      String
+  topic        Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  sourceId     String
+  source       Source   @relation(fields: [sourceId], references: [id])
+
+  // ライターがそのまま使える要約（元記事の丸写しではなく調査員による要約）
+  summary      String
+  // 重要ポイントの箇条書き（JSON配列の文字列として保存）
+  keyPoints    String   @default("[]")
+  // 引用可能な一次情報（JSON配列: {text, context?} の文字列として保存）
+  quotes       String   @default("[]")
+
+  // 調査員による主観評価（1-5）。ライターが取捨選択する際の判断材料。
+  reliability  Int      @default(3)
+  relevance    Int      @default(3)
+
+  tags         Tag[]    @relation("ResearchItemTags")
+
+  // new: 未確認 / reviewed: 編集者確認済み / used: 記事で使用 / rejected: 不採用
+  status       String   @default("new")
+  collectedBy  String?
+  notes        String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([topicId])
+  @@index([sourceId])
+}
+
+model Tag {
+  id    String         @id @default(cuid())
+  name  String         @unique
+  items ResearchItem[] @relation("ResearchItemTags")
+}
