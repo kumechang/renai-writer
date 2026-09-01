@@ -7,7 +7,8 @@
 - **調査員**: ライターが執筆に使う資料をWebから収集
 
 このリポジトリでは、まず **調査員が収集したデータを、ライターが記事執筆に使いやすい形で
-蓄積・提供するデータベースAPI** を実装している。編集者・ライターの機能は今後この上に構築する。
+蓄積・提供するデータベースAPI**、および **そのデータを実際にWebから集める調査員エージェント
+（Claude API）** を実装している。編集者・ライターの機能は今後この上に構築する。
 
 ## 技術スタック
 
@@ -85,6 +86,17 @@ npm run dev
 
 - `GET /api/tags` — 登録済みタグ一覧
 
+## 調査員エージェント（Claude API）
+
+「調査員」ロールを Claude API（`claude-opus-5`）で実際に動かすプロンプト・ツール定義・実行スクリプトを
+`src/agents/researcher/` に用意している。`web_search` / `web_fetch` でWebから情報を集め、
+`submit_research_item` ツールで上記の登録APIにそのまま投入する。詳細は
+[`src/agents/researcher/README.md`](src/agents/researcher/README.md) を参照。
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... npm run researcher -- <topicId>
+```
+
 ## テスト
 
 ```bash
@@ -97,4 +109,3 @@ npm test
 
 - 編集者ロール: `Topic` を起点にした企画立案・記事添削機能
 - ライターロール: `briefing` を材料に記事本文を生成・保存する機能
-- 調査員の自動化: Web検索・スクレイピングを行い `POST /api/topics/:topicId/items` に自動投入するワーカー
