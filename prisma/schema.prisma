@@ -77,3 +77,59 @@ model Tag {
   name  String         @unique
   items ResearchItem[] @relation("ResearchItemTags")
 }
+
+// 編集者が立てる記事企画。テーマ(GitHub issue等)から、想定読者・構成・
+// ボリューム・有料部分の設計・タイトル案までを1件にまとめて保持する。
+model Plan {
+  id               String   @id @default(cuid())
+  theme            String
+  targetReader     String
+  // Markdown形式の構成案(見出しごとに何を書くか)
+  structure        String
+  // 記事全体および無料/有料部分の目安文字数の説明
+  volume           String
+  // 有料部分の区切り位置とその狙いの説明
+  paidSection      String
+  // タイトル案(JSON配列、ちょうど50件)
+  titleCandidates  String
+  // 編集者が50件の中から選んだ推奨タイトル(人間による最終確認前の暫定案)
+  recommendedTitle String
+  // 人間またはワークフローが確定させたタイトル。未確定の間はnull
+  selectedTitle    String?
+  // planning -> drafting -> in_review -> (needs_revision を経て再度drafting) ->
+  // accepted / accepted_with_reservation / needs_human_review
+  status           String   @default("planning")
+  drafts           Draft[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ライターが提出した原稿の1版。revisionNumber 0が初稿、1・2が差し戻し後の修正稿。
+model Draft {
+  id             String   @id @default(cuid())
+  planId         String
+  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  revisionNumber Int
+  title          String
+  content        String
+  wordCount      Int
+  review         Review?
+  createdAt      DateTime @default(now())
+
+  @@index([planId])
+}
+
+// 編集者による1原稿へのレビュー結果。1原稿につき1件。
+model Review {
+  id             String   @id @default(cuid())
+  draftId        String   @unique
+  draft          Draft    @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  score          Int
+  // score >= 80 かどうか。80点未満でも、2回の差し戻し後で70点を超える場合は
+  // Plan.status側で "accepted_with_reservation" として成立させる。
+  passed         Boolean
+  // 2回目の差し戻し後(最後の機会)のレビューかどうか
+  isFinalAttempt Boolean  @default(false)
+  feedback       String
+  createdAt      DateTime @default(now())
+}

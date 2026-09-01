@@ -6,9 +6,9 @@
 - **ライター**: 編集者が立案した企画をもとに文章を制作
 - **調査員**: ライターが執筆に使う資料をWebから収集
 
-このリポジトリでは、まず **調査員が収集したデータを、ライターが記事執筆に使いやすい形で
-蓄積・提供するデータベースAPI**、および **そのデータを実際にWebから集める調査員エージェント
-（Claude API）** を実装している。編集者・ライターの機能は今後この上に構築する。
+このリポジトリでは、3ロールそれぞれのデータをライターが記事執筆に使いやすい形で
+蓄積・提供する**データベースAPI**と、3ロールを実際にClaude APIで動かす**エージェント**
+（企画立案→執筆→レビュー→差し戻しまでの一気通貫パイプライン）を実装している。
 
 ## 技術スタック
 
@@ -37,6 +37,9 @@ npm run dev
 | `Source` | 収集元URLの情報（ドメイン・著者・サイト名・公開日など） |
 | `ResearchItem` | 調査員が集めた個別データ。要約・重要ポイント・引用・信頼度/関連度スコア・タグを持つ |
 | `Tag` | 記事のトピックやジャンルで横断検索するためのタグ |
+| `Plan` | 編集者が立てる企画。想定読者・構成・ボリューム・有料部分の設計・タイトル案50個を持つ |
+| `Draft` | ライターが提出した原稿の1版（`revisionNumber` 0が初稿、1・2が差し戻し後の修正稿） |
+| `Review` | 編集者による1原稿へのレビュー結果（0〜100点のスコアとフィードバック、1原稿につき1件） |
 
 `ResearchItem` は「元記事の丸写し」ではなく、調査員が要約・評価した上で保存する設計にしている。
 ライターはこれをそのまま記事の材料として使える。
@@ -86,15 +89,38 @@ npm run dev
 
 - `GET /api/tags` — 登録済みタグ一覧
 
-## 調査員エージェント（Claude API）
+### 企画（編集者が立案）
 
-「調査員」ロールを Claude API（`claude-opus-5`）で実際に動かすプロンプト・ツール定義・実行スクリプトを
-`src/agents/researcher/` に用意している。`web_search` / `web_fetch` でWebから情報を集め、
-`submit_research_item` ツールで上記の登録APIにそのまま投入する。詳細は
-[`src/agents/researcher/README.md`](src/agents/researcher/README.md) を参照。
+- `POST /api/plans` — 企画作成 `{ theme, targetReader, structure, volume, paidSection, titleCandidates(50件ちょうど), recommendedTitle }`
+- `GET /api/plans` — 一覧
+- `GET /api/plans/:id` — 詳細
+- `PATCH /api/plans/:id` — 更新（`selectedTitle` の確定、`status` の遷移）
+  - `status`: `planning` / `drafting` / `in_review` / `needs_revision` / `accepted` /
+    `accepted_with_reservation` / `needs_human_review` / `archived`
+
+### 原稿・レビュー（ライターが執筆、編集者が採点）
+
+- `POST /api/plans/:planId/drafts` — 原稿登録 `{ title, content, wordCount? }`
+  （`revisionNumber` は既存件数から自動採番。省略時 `wordCount` は `content.length`）
+- `GET /api/plans/:planId/drafts` — 一覧（revisionNumber昇順、レビュー結果つき）
+- `GET /api/plans/:planId/drafts/:draftId` — 詳細
+- `POST /api/plans/:planId/drafts/:draftId/review` — レビュー登録
+  `{ score(0-100), feedback, isFinalAttempt? }`（1原稿につき1回のみ、`passed` は `score>=80` から自動算出）
+- `GET /api/plans/:planId/drafts/:draftId/review` — レビュー取得
+
+## エージェント（Claude API）
+
+編集者・ライター・調査員の3ロールを Claude API（`claude-opus-5`）で実際に動かすプロンプト・
+ツール定義・実行スクリプトを `src/agents/` に用意している。企画立案→執筆→レビュー→
+（必要なら）差し戻しまでを一気通貫で実行するパイプラインも含む。詳細は
+[`src/agents/README.md`](src/agents/README.md) を参照。
 
 ```bash
+# 調査員のみ単体実行
 ANTHROPIC_API_KEY=sk-ant-... npm run researcher -- <topicId>
+
+# 編集者→ライター→編集者レビュー→(必要なら)差し戻しまで一気通貫で実行
+ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚活アプリの選び方"
 ```
 
 ## テスト
@@ -107,5 +133,5 @@ npm test
 
 ## 今後の拡張（未実装）
 
-- 編集者ロール: `Topic` を起点にした企画立案・記事添削機能
-- ライターロール: `briefing` を材料に記事本文を生成・保存する機能
+- GitHub issueの新規作成をトリガーに、パイプラインを自動起動する仕組み（現状はCLIから手動実行）
+- タイトル確定・レビュー結果などを人間が見るための管理画面（現状はAPI経由での確認のみ）

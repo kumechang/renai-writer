@@ -13,7 +13,8 @@
     "prisma:studio": "prisma studio",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "researcher": "ts-node src/agents/researcher/runResearcher.ts"
+    "researcher": "ts-node src/agents/researcher/runResearcher.ts",
+    "pipeline": "ts-node src/agents/pipeline/runPipeline.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
