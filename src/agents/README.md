@@ -28,6 +28,9 @@
   ▼ (2回の差し戻し後もscore<80)
 score>70 なら accepted_with_reservation として成立
 score<=70 なら needs_human_review (人間の編集者の確認が必要)
+  │
+  ▼ (--issue で実行した場合のみ)
+完成した記事を、テーマの元になったissueにコメントとして投稿
 ```
 
 差し戻しは2回目まで（初稿+修正2回=最大3原稿・3回のレビュー）。
@@ -56,11 +59,13 @@ npm run dev
 # 2a. テーマを直接指定して実行
 ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚活アプリの選び方"
 
-# 2b. テーマをGitHub issueに書いた場合(本文をそのままテーマとして使う)
+# 2b. テーマをGitHub issueに書いた場合(本文をそのままテーマとして使い、
+#     完成した記事は同じissueにコメントとして自動投稿される)
 GITHUB_TOKEN=... ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --issue kumechang/renai-writer#12
 ```
 
-`GITHUB_TOKEN` はprivateリポジトリのissueを読む場合のみ必要。
+`GITHUB_TOKEN` は `--issue` を使う場合に必要（issue本文の読み取り自体はpublicリポジトリなら
+不要だが、完成した記事をコメント投稿するには issues:write 権限を持つトークンが常に必要）。
 
 実行結果は `Plan` / `Draft` / `Review` としてDBに保存され、以下から参照できる。
 
