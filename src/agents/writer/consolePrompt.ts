@@ -1,6 +1,8 @@
 import type { DraftResponse, PlanResponse } from "../shared/types";
 
-const PAID_SECTION_MARKER = "<!-- PAID_SECTION -->";
+// HTMLコメント構文(<!-- ... -->)は、GitHub上での表示やツール経由での読み取り時に
+// 意図せず消えたり見落とされたりすることがあったため、プレーンテキストの角括弧に変更した。
+const PAID_SECTION_MARKER = "[PAID_SECTION]";
 
 function formatPlan(plan: PlanResponse, title: string): string {
   return `- テーマ: ${plan.theme}
@@ -86,7 +88,8 @@ ${review?.feedback ?? "(フィードバックがありません)"}
 
 - フィードバックで指摘されたすべての点に対応してください。
 - あえて反映しない指摘がある場合は、その理由を短く添えてください（説明文として）。
-- 有料部分マーカー \`${PAID_SECTION_MARKER}\` は本文中に1回だけ残してください。
+- 有料部分マーカー \`${PAID_SECTION_MARKER}\` は本文中に1回だけ残してください（削除したり
+  書き換えたりしないこと）。
 ${isFinalAttempt ? "- これが最後の修正機会です。特に重要な指摘への対応を優先してください。" : ""}
 
 # 回答形式（重要）

@@ -1,6 +1,8 @@
 import type { DraftResponse, PlanResponse } from "../shared/types";
 
-const PAID_SECTION_MARKER = "<!-- PAID_SECTION -->";
+// HTMLコメント構文(<!-- ... -->)は、GitHub上での表示やツール経由での読み取り時に
+// 意図せず消えたり見落とされたりすることがあったため、プレーンテキストの角括弧に変更した。
+const PAID_SECTION_MARKER = "[PAID_SECTION]";
 
 function formatPlan(plan: PlanResponse, title: string): string {
   return `- テーマ: ${plan.theme}

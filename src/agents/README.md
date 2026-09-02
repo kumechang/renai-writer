@@ -94,9 +94,10 @@ npm run console -- research --issue kumechang/renai-writer#1 \
 - 返信の解析は、コメント本文から最初の \`\`\`json ... \`\`\` コードブロックを取り出して
   （`shared/jsonBlock.ts`）、既存の `src/schemas/*`（REST APIと共通のclassic zod）で
   検証する。ツール呼び出しを使わないため、API側のバリデーションをそのまま再利用できる。
-- プロンプト文中で `<!-- PAID_SECTION -->` のようなHTMLコメント構文をそのまま地の文に
-  書くと、GitHub上でHTMLコメントとして解釈され表示から消えるため、説明文中では
-  インラインコード（バッククォート1つ）で囲んでいる。
+- 有料部分の区切りマーカーは `[PAID_SECTION]`（プレーンテキストの角括弧）を使っている。
+  当初 `<!-- PAID_SECTION -->` というHTMLコメント構文を使っていたが、GitHub上での表示や
+  ツール経由での読み取り時に意図せず消える・見落とされるケースがあったため、レンダリングに
+  依存しない形式に変更した。
 
 ## 自動実行フロー（`src/agents/pipeline/`）
 

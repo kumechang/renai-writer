@@ -125,7 +125,7 @@ describe("plan / article / draft / review API", () => {
       .post(`/api/plans/${planId}/articles/${articleId}/drafts`)
       .send({
         title: "婚活アプリ比較記事",
-        content: "## はじめに\n本文...\n<!-- PAID_SECTION -->\n有料部分",
+        content: "## はじめに\n本文...\n[PAID_SECTION]\n有料部分",
       });
 
     expect(res.status).toBe(201);
