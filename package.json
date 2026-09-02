@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "researcher": "ts-node src/agents/researcher/runResearcher.ts",
     "pipeline": "ts-node src/agents/pipeline/runPipeline.ts",
-    "console": "ts-node src/agents/console/runConsole.ts"
+    "console": "ts-node src/agents/console/runConsole.ts",
+    "ci:server": "ts-node src/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

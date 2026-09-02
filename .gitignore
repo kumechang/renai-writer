@@ -6,3 +6,9 @@ prisma/dev.db
 prisma/dev.db-journal
 test/test.db
 test/test.db-journal
+
+# prisma/bot.db 本体はGitHub Actions(console-plan/console-check)が状態を
+# 永続化するために意図的にコミットする。journal/wal/shmなど一時ファイルのみ除外する。
+prisma/bot.db-journal
+prisma/bot.db-wal
+prisma/bot.db-shm

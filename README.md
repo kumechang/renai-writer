@@ -141,6 +141,26 @@ npm run console -- research --issue kumechang/renai-writer#1 \
   --title "婚活アプリの料金相場" --brief "20代向け主要アプリの月額料金を調べてほしい"
 ```
 
+#### GitHub Actionsによる自動化
+
+`plan`/`check`の実行そのものは `.github/workflows/console-plan.yml` /
+`console-check.yml` により自動化できる。issueを作成すると企画立案プロンプトが自動投稿され、
+issueにコメントを付けるたびに返信の解析と次のプロンプトの投稿が自動で行われる
+（テーマの登録とコンソールでの実行・回答の貼り付けは引き続き人間が行う）。
+
+利用するには以下が必要:
+
+1. **ワークフローがデフォルトブランチにあること**（`issues`/`issue_comment`イベントは
+   デフォルトブランチ上のワークフロー定義を使う。このPRがマージされるまでは発火しない）
+2. リポジトリの **Settings → Actions → General → Workflow permissions** を
+   「Read and write permissions」にする（issueへのコメント投稿とbot.dbのコミットに必要）
+
+状態（Plan/Draft/Review/IssueSessionなど）はActionsの使い捨て実行環境をまたいで
+保持する必要があるため、ローカル開発用の `prisma/dev.db`（gitignore対象）とは別に、
+**`prisma/bot.db` をリポジトリにコミットして永続化する**方式にしている
+（外部DBサービスを使わずに手軽に済ませるためのトレードオフ。SQLiteのバイナリファイルが
+git履歴に積み上がる点と、複数issueを同時に自動処理すると競合しうる点は把握した上で採用）。
+
 ### 自動実行（Anthropic APIを直接呼び出す・費用が発生）
 
 Claude API（`claude-sonnet-5`）を直接呼び出して全ステップを自動実行する従来方式も残している。
