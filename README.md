@@ -40,6 +40,7 @@ npm run dev
 | `Plan` | 編集者が立てる企画。想定読者・構成・ボリューム・有料部分の設計・タイトル案50個を持つ |
 | `Draft` | ライターが提出した原稿の1版（`revisionNumber` 0が初稿、1・2が差し戻し後の修正稿） |
 | `Review` | 編集者による1原稿へのレビュー結果（0〜100点のスコアとフィードバック、1原稿につき1件） |
+| `IssueSession` | 「コンソール駆動」フロー（下記）の進行状況を管理する内部テーブル。GitHub issueごとに、保留中のプロンプトと紐づくコメントIDを保持する |
 
 `ResearchItem` は「元記事の丸写し」ではなく、調査員が要約・評価した上で保存する設計にしている。
 ライターはこれをそのまま記事の材料として使える。
@@ -108,20 +109,49 @@ npm run dev
   `{ score(0-100), feedback, isFinalAttempt? }`（1原稿につき1回のみ、`passed` は `score>=80` から自動算出）
 - `GET /api/plans/:planId/drafts/:draftId/review` — レビュー取得
 
-## エージェント（Claude API）
+## エージェント
 
-編集者・ライター・調査員の3ロールを Claude API（`claude-sonnet-5`）で実際に動かすプロンプト・
-ツール定義・実行スクリプトを `src/agents/` に用意している。企画立案→執筆→レビュー→
-（必要なら）差し戻しまでを一気通貫で実行するパイプラインも含む。詳細は
-[`src/agents/README.md`](src/agents/README.md) を参照。
+編集者・ライター・調査員の3ロールを動かすためのプロンプト・状態管理・実行スクリプトを
+`src/agents/` に用意している。2つの動かし方がある。
+
+### コンソール駆動（推奨・Anthropic API費用ゼロ）
+
+Claude AIへの主な問いかけは Claude.ai のコンソールで人間が手動実行し、このリポジトリの
+スクリプトはプロンプトの生成・GitHub issueへの出力・返信の解析だけを行う。
+`npm run console` 自体はAnthropic APIを一切呼び出さない。
 
 ```bash
-# 調査員のみ単体実行
-ANTHROPIC_API_KEY=sk-ant-... npm run researcher -- <topicId>
+npm run dev  # APIサーバーを起動
 
-# 編集者→ライター→編集者レビュー→(必要なら)差し戻しまで一気通貫で実行
+# 1. 編集者への企画立案プロンプトをissueに投稿(テーマはissue本文から取得)
+npm run console -- plan --issue kumechang/renai-writer#1
+
+# 2. issueに投稿されたプロンプトをClaude.aiのコンソールに貼り付けて実行し、
+#    回答(```json ... ```を含む全文)をissueにコメントとして貼り付ける
+
+# 3. 返信を解析して次のプロンプト(ライターへの執筆依頼)を投稿
+npm run console -- check --issue kumechang/renai-writer#1
+
+# 以降、「コンソールで実行→回答をissueに貼り付け→check」を繰り返すと、
+# 執筆→レビュー→(必要なら)差し戻しでの再執筆→完成、まで進み、
+# 最終的に完成した記事が同じissueにコメントとして投稿される。
+
+# (任意) 調査員への依頼を先に行いたい場合
+npm run console -- research --issue kumechang/renai-writer#1 \
+  --title "婚活アプリの料金相場" --brief "20代向け主要アプリの月額料金を調べてほしい"
+```
+
+### 自動実行（Anthropic APIを直接呼び出す・費用が発生）
+
+Claude API（`claude-sonnet-5`）を直接呼び出して全ステップを自動実行する従来方式も残している。
+コストと引き換えに人手を介さず完結できる。
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... npm run researcher -- <topicId>
 ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚活アプリの選び方"
 ```
+
+両方式の詳細・仕組みは [`src/agents/README.md`](src/agents/README.md) を参照。
 
 ## テスト
 

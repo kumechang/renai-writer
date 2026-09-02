@@ -133,3 +133,29 @@ model Review {
   feedback       String
   createdAt      DateTime @default(now())
 }
+
+// GitHub issueを介した「コンソール駆動」フローの進行状況を追跡する内部管理テーブル。
+// Claude API(自動実行)を使わず、Claude.aiのコンソールに人間が手動でプロンプトを
+// コピー&ペーストして実行し、その回答をissueコメントとして貼り付けてもらう運用を想定する。
+// 1issueにつき同時に1つの保留中プロンプトのみを許容する。
+model IssueSession {
+  id          String @id @default(cuid())
+  issueOwner  String
+  issueRepo   String
+  issueNumber Int
+
+  topicId String?
+  planId  String?
+
+  // 保留中のステップ。null は保留中のプロンプトが無い状態。
+  // "research" | "plan" | "draft" | "review"
+  pendingStep String?
+  // 保留中プロンプトのGitHubコメントID。このIDより新しいコメントを返信として探す。
+  // GitHubのコメントIDは32bit intに収まらないためBigIntで保持する。
+  pendingPromptCommentId BigInt?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([issueOwner, issueRepo, issueNumber])
+}

@@ -23,14 +23,18 @@ export async function fetchGithubIssue(
   return { title: data.title, body: data.body ?? "" };
 }
 
-// 完成した記事をコメントとしてissueに投稿する。読み取りと異なり、
-// コメント投稿には常に書き込み権限を持つGITHUB_TOKENが必要。
+export interface PostedComment {
+  id: number;
+  createdAt: string;
+}
+
+// コメントをissueに投稿する。常に書き込み権限を持つGITHUB_TOKENが必要。
 export async function postIssueComment(
   owner: string,
   repo: string,
   issueNumber: number,
   body: string
-): Promise<void> {
+): Promise<PostedComment> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     throw new Error(
@@ -54,4 +58,34 @@ export async function postIssueComment(
   if (!res.ok) {
     throw new Error(`GitHub issue へのコメント投稿に失敗しました: ${res.status} ${await res.text()}`);
   }
+  const data = (await res.json()) as { id: number; created_at: string };
+  return { id: data.id, createdAt: data.created_at };
+}
+
+export interface IssueComment {
+  id: number;
+  body: string;
+  createdAt: string;
+}
+
+// issueのコメント一覧を取得する(古い順)。コンソールでの回答を探すのに使う。
+export async function listIssueComments(
+  owner: string,
+  repo: string,
+  issueNumber: number
+): Promise<IssueComment[]> {
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+      },
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`GitHub issue のコメント取得に失敗しました: ${res.status} ${await res.text()}`);
+  }
+  const data = (await res.json()) as Array<{ id: number; body: string | null; created_at: string }>;
+  return data.map((c) => ({ id: c.id, body: c.body ?? "", createdAt: c.created_at }));
 }

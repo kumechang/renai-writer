@@ -1,76 +1,103 @@
-# エージェント一覧 (Claude API)
+# エージェント一覧
 
-編集者・ライター・調査員の3ロールを Claude API（`claude-sonnet-5`）で実際に動かすための
-プロンプト・ツール定義・実行スクリプト。すべて `src/agents/pipeline` が一気通貫で
-オーケストレーションする。
+編集者・ライター・調査員の3ロールを動かすためのプロンプト・状態管理・実行スクリプト。
+2つの動かし方がある。
 
-## 全体の流れ
+- **コンソール駆動**（`src/agents/console/`、推奨）: Claude AIへの主な問いかけはClaude.ai
+  のコンソールで人間が手動実行する。このリポジトリのコードはプロンプトの生成・GitHub issue
+  への出力・返信の解析だけを行い、Anthropic APIを一切呼び出さない。
+- **自動実行**（`src/agents/pipeline/`）: Claude API（`claude-sonnet-5`）を直接呼び出して
+  全ステップを自動実行する。コストと引き換えに人手を介さず完結できる。
+
+どちらも同じルール（差し戻しは2回目まで、80点以上で合格、2回の差し戻し後70点超なら
+条件付きで成立、70点以下は人間確認）で編集者・ライターの往復を進める。
+
+## コンソール駆動フロー（`src/agents/console/`）
 
 ```
-テーマ(GitHub issue または直接指定)
+GitHub issue(テーマ記載)
   │
+  │ npm run console -- plan --issue owner/repo#番号
   ▼
-編集者: 企画立案 (runEditorPlanning)
-  - 想定読者・構成・ボリューム・有料部分の設計、タイトル案50個 を submit_plan で登録
-  - 必要なら request_research で調査員に依頼
-  │
+編集者への企画立案プロンプトをissueにコメント投稿
+  │ (人間がClaude.aiのコンソールに貼り付けて実行し、回答をissueに貼り付ける)
+  │ npm run console -- check --issue owner/repo#番号
   ▼
-ライター: 初稿執筆 (runWriterDraft)
-  - 企画に沿って本文を執筆し submit_draft で登録 (revisionNumber=0)
-  - 必要なら request_research で調査員に依頼
-  │
+返信のJSONを解析してPlanを登録 → ライターへの執筆プロンプトをissueに投稿
+  │ (人間がコンソールで実行 → 回答をissueに貼り付け → check)
   ▼
-編集者: レビュー (runEditorReview) ──score>=80──▶ accepted で終了
-  │ score<80
+返信のJSONを解析してDraftを登録 → 編集者へのレビュープロンプトをissueに投稿
+  │ (人間がコンソールで実行 → 回答をissueに貼り付け → check)
   ▼
-ライターが差し戻し2回目まで修正 (runWriterRevision) ──▶ 編集者が再レビュー
-  │
-  ▼ (2回の差し戻し後もscore<80)
-score>70 なら accepted_with_reservation として成立
-score<=70 なら needs_human_review (人間の編集者の確認が必要)
-  │
-  ▼ (--issue で実行した場合のみ)
-完成した記事を、テーマの元になったissueにコメントとして投稿
+返信のJSONを解析してReviewを登録
+  ├─ score>=80                        → 完成。記事をissueに投稿して終了
+  ├─ score<80 かつ差し戻し2回未満       → ライターへの修正プロンプトを投稿(draftへ戻る)
+  └─ score<80 かつ差し戻し2回目         → score>70なら条件付きで成立、70以下は要人間確認
+                                          いずれも記事をissueに投稿して終了
 ```
 
-差し戻しは2回目まで（初稿+修正2回=最大3原稿・3回のレビュー）。
+`check` は「issueに保留中のプロンプトより新しいコメントがあるか」を見て、あれば処理して
+次のプロンプトを投稿するだけの、何度でも安全に呼べるコマンド。まだ返信がなければ
+「まだ返信が見つかりません」と言って何もしない。
+
+### 使い方
+
+```bash
+npm run dev  # APIサーバーを起動
+
+# 企画立案から開始(テーマはissue本文から取得)
+npm run console -- plan --issue kumechang/renai-writer#1
+
+# issueに投稿されたプロンプトをClaude.aiのコンソールに貼り付けて実行し、
+# 回答(```json ... ```を含む全文)をissueにコメントとして貼り付けてから:
+npm run console -- check --issue kumechang/renai-writer#1
+
+# 以降、「コンソールで実行→回答を貼り付け→check」を完成まで繰り返す
+
+# (任意) 企画立案の前に調査員へ依頼したい場合
+npm run console -- research --issue kumechang/renai-writer#1 \
+  --title "調査タイトル" --brief "調べてほしい内容"
+```
+
+`GITHUB_TOKEN`（`issues:write` 権限）が常に必要。`research` を使った場合、その調査結果は
+`plan` 実行時に自動で企画立案プロンプトへ埋め込まれる。
+
+### 実装メモ
+
+- 状態管理は内部テーブル `IssueSession`（issueごとに、保留中のステップと直前に投稿した
+  プロンプトのコメントIDを保持）で行う。1つのissueにつき同時に1つの保留中プロンプトのみ
+  許容する。
+- 返信の解析は、コメント本文から最初の \`\`\`json ... \`\`\` コードブロックを取り出して
+  （`shared/jsonBlock.ts`）、既存の `src/schemas/*`（REST APIと共通のclassic zod）で
+  検証する。ツール呼び出しを使わないため、API側のバリデーションをそのまま再利用できる。
+- プロンプト文中で `<!-- PAID_SECTION -->` のようなHTMLコメント構文をそのまま地の文に
+  書くと、GitHub上でHTMLコメントとして解釈され表示から消えるため、説明文中では
+  インラインコード（バッククォート1つ）で囲んでいる。
+
+## 自動実行フロー（`src/agents/pipeline/`）
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... npm run researcher -- <topicId>
+ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚活アプリの選び方"
+# または
+ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... npm run pipeline -- --issue kumechang/renai-writer#12
+```
+
+`--issue` で実行した場合、完成した記事は同じissueにコメントとして自動投稿される。
+
+編集者・ライターはいずれも `request_research` ツールを持ち、呼び出すとその場で調査員
+エージェントを実行してMarkdown資料を受け取る（プロセスを分けず、同一プロセス内で呼び出す）。
 
 ## ディレクトリ構成
 
 | ディレクトリ | 役割 |
 | --- | --- |
-| `researcher/` | 調査員。`web_search`/`web_fetch` でWeb調査し `submit_research_item` でDBに登録 |
-| `editor/` | 編集者。`submit_plan`（企画立案）と `review_draft`（レビュー・採点）の2つのモード |
-| `writer/` | ライター。`submit_draft`（執筆・修正、いずれも全文提出） |
-| `pipeline/` | 上記を差し戻しルールに従って一気通貫で実行するオーケストレーター |
-| `shared/` | 各エージェント共通のユーティリティ。特に `requestResearchTool.ts` は編集者・
-ライターの両方から「調査員に依頼する」ために使う |
-
-編集者・ライターはいずれも `request_research` ツールを持ち、呼び出すとその場で
-調査員エージェントを実行してMarkdown資料を受け取る（プロセスを分けず、同一プロセス内で
-呼び出す）。
-
-## 使い方
-
-```bash
-# 1. APIサーバーを起動
-npm run dev
-
-# 2a. テーマを直接指定して実行
-ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚活アプリの選び方"
-
-# 2b. テーマをGitHub issueに書いた場合(本文をそのままテーマとして使い、
-#     完成した記事は同じissueにコメントとして自動投稿される)
-GITHUB_TOKEN=... ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --issue kumechang/renai-writer#12
-```
-
-`GITHUB_TOKEN` は `--issue` を使う場合に必要（issue本文の読み取り自体はpublicリポジトリなら
-不要だが、完成した記事をコメント投稿するには issues:write 権限を持つトークンが常に必要）。
-
-実行結果は `Plan` / `Draft` / `Review` としてDBに保存され、以下から参照できる。
-
-- `GET /api/plans/:id` — 企画内容と最終ステータス
-- `GET /api/plans/:planId/drafts` — 各版の原稿(レビュー結果つき)
+| `researcher/` | 調査員。`systemPrompt.ts`/`tools.ts`/`run.ts` は自動実行用、`consolePrompt.ts` はコンソール用 |
+| `editor/` | 編集者。同様に自動実行用とコンソール用のプロンプトを両方持つ |
+| `writer/` | ライター。同様 |
+| `pipeline/` | 自動実行のオーケストレーター。`formatComment.ts` は完成記事のコメント整形（コンソール駆動側でも共用） |
+| `console/` | コンソール駆動の状態管理・CLI（`run.ts` が本体、`runConsole.ts` がエントリポイント） |
+| `shared/` | 両方式で共通のユーティリティ（HTTPヘルパー、JSON抽出、共通型など） |
 
 ## タイトルの確定について
 

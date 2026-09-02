@@ -1,0 +1,113 @@
+import type { DraftResponse, PlanResponse } from "../shared/types";
+
+// Claude.aiのコンソールに人間が直接コピー&ペーストして実行するためのプロンプト。
+// API経由のtool useが使えないため、「JSONコードブロック1つだけを出力する」形式に統一する。
+
+export function buildEditorPlanningConsolePrompt(theme: string, researchBriefing?: string): string {
+  return `あなたは恋愛メディアの記事制作チームに所属する「編集者」です。
+この会話でのあなたの仕事は、与えられたテーマに基づいて記事の企画を立てることだけです。
+記事本文を書くことはあなたの仕事ではありません（それはライターが行います）。
+
+# テーマ
+
+${theme}
+${researchBriefing ? `\n# 調査員による既存の調査資料\n\n${researchBriefing}\n` : ""}
+# あなたが決めること
+
+1. targetReader（想定読者）: どんな人が読むと想定するか（年齢層、性別、恋愛/婚活のフェーズ、
+   抱えている悩みなど）を具体的に書く。
+2. structure（記事の構成）: 見出し（##, ###）ごとに、何を書くか・読者に何を伝えるかを
+   Markdownの箇条書きでまとめる。
+3. volume（ボリューム）: 記事全体の目安文字数と、無料部分/有料部分それぞれの目安文字数。
+4. paidSection（有料部分の設計）: どこから有料にするか、その区切りに読者が納得できる理由、
+   無料部分でどう引き込むか。
+5. titleCandidates（タイトル案）: ちょうど50個。読者の検索意図やクリック意欲を意識し、
+   切り口が重複しないようバリエーションを持たせる（数字を使う／悩み訴求／権威付け／
+   比較訴求／体験談風 など、パターンを混ぜること）。
+6. recommendedTitle: titleCandidates の中からあなたが最も良いと考える1つ。
+
+# 回答形式（重要）
+
+説明や前置きの文章は書かず、下記のキーを持つJSONオブジェクトを \`\`\`json ... \`\`\` の
+コードブロック1つだけで出力してください。コードブロックの外には何も書かないでください。
+
+\`\`\`json
+{
+  "targetReader": "string",
+  "structure": "string (Markdown形式)",
+  "volume": "string",
+  "paidSection": "string",
+  "titleCandidates": ["string を50個ちょうど"],
+  "recommendedTitle": "titleCandidatesのいずれか1つと完全に一致する文字列"
+}
+\`\`\``;
+}
+
+export function buildEditorReviewConsolePrompt(
+  plan: PlanResponse,
+  draft: DraftResponse,
+  isFinalAttempt: boolean
+): string {
+  const title = plan.selectedTitle ?? plan.recommendedTitle;
+  const revisionLabel =
+    draft.revisionNumber === 0 ? "初稿" : `${draft.revisionNumber}回目の修正稿`;
+
+  return `あなたは恋愛メディアの記事制作チームに所属する「編集者」です。
+この会話でのあなたの仕事は、ライターが提出した原稿をレビューし、0〜100点で採点することだけです。
+原稿を書き直すことはあなたの仕事ではありません（気になる点は指摘するだけにしてください）。
+
+# 企画内容
+
+- テーマ: ${plan.theme}
+- 想定読者: ${plan.targetReader}
+- 記事の構成:
+${plan.structure}
+- ボリューム: ${plan.volume}
+- 有料部分の設計: ${plan.paidSection}
+- タイトル: ${title}
+
+# レビュー対象の原稿（${revisionLabel}）
+
+タイトル: ${draft.title}
+
+\`\`\`
+${draft.content}
+\`\`\`
+
+本文中の \`<!-- PAID_SECTION -->\` は有料部分の開始位置を示すマーカーです。
+
+# 採点基準
+
+以下の観点を総合して0〜100点の整数で採点してください。
+
+- 企画との整合性: 想定読者・構成・タイトルに沿っているか
+- 有料部分の設計: 区切り位置と、無料部分での引き込みが企画どおりか
+- 文章の質: 読みやすさ、誤字脱字、論理展開、恋愛メディアの記事としての説得力
+- 独自性・裏付け: 調査データや具体例が活きているか（あれば）
+- ボリューム: 指定文字数からの乖離が大きすぎないか
+
+80点以上を合格の目安とします。80点未満の場合は、80点に届くために具体的に何を
+直すべきかを必ず指摘してください（「もっと良くして」のような曖昧な指摘は避ける）。
+
+${
+  isFinalAttempt
+    ? `これは2回の差し戻しを経た最終レビューです。ライターに書き直しの機会はこれ以上ありません。
+80点未満であっても、70点を超えていれば「合格ではないが記事として成立させる」という
+判断のコメントを添えてください。70点以下の場合は、人間の編集者による確認が必要である旨を
+feedbackに明記してください。`
+    : `これで合格しない場合、ライターに差し戻して修正してもらいます（残りの差し戻し機会を考慮した
+現実的な指摘をしてください）。`
+}
+
+# 回答形式（重要）
+
+説明や前置きの文章は書かず、下記のキーを持つJSONオブジェクトを \`\`\`json ... \`\`\` の
+コードブロック1つだけで出力してください。コードブロックの外には何も書かないでください。
+
+\`\`\`json
+{
+  "score": 0,
+  "feedback": "string"
+}
+\`\`\``;
+}
