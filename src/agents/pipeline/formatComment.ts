@@ -1,4 +1,4 @@
-import type { DraftResponse, PlanResponse } from "../shared/types";
+import type { DraftResponse } from "../shared/types";
 import type { PipelineResult } from "./run";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -7,17 +7,15 @@ const STATUS_LABELS: Record<string, string> = {
   needs_human_review: "🚫 要人間確認（70点以下、差し戻し上限に到達）",
 };
 
-// パイプラインの最終成果物(企画+最終原稿)をGitHub issueコメント用のMarkdownに整形する。
+// 1記事の最終成果物(最終原稿)をGitHub issueコメント用のMarkdownに整形する。
 export function formatArticleComment(
-  plan: PlanResponse,
   draft: DraftResponse,
   result: Pick<PipelineResult, "finalScore" | "finalStatus">
 ): string {
-  const title = plan.selectedTitle ?? plan.recommendedTitle;
   const statusLabel = STATUS_LABELS[result.finalStatus] ?? result.finalStatus;
 
   const lines = [
-    `## ${title}`,
+    `## ${draft.title}`,
     "",
     `**ステータス**: ${statusLabel}`,
     `**スコア**: ${result.finalScore}点 / **修正回数**: ${draft.revisionNumber}回`,

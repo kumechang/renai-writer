@@ -2,8 +2,7 @@ import type { DraftResponse, PlanResponse } from "../shared/types";
 
 const PAID_SECTION_MARKER = "<!-- PAID_SECTION -->";
 
-function formatPlan(plan: PlanResponse): string {
-  const title = plan.selectedTitle ?? plan.recommendedTitle;
+function formatPlan(plan: PlanResponse, title: string): string {
   return `- テーマ: ${plan.theme}
 - 想定読者: ${plan.targetReader}
 - 記事の構成:
@@ -16,7 +15,7 @@ ${plan.structure}
 // 「ライター」ロール用システムプロンプト。初稿執筆と、レビュー後の修正で
 // 別のプロンプトを用意する。企画変更や採点はライターの仕事ではない。
 
-export function buildWriterDraftSystemPrompt(plan: PlanResponse): string {
+export function buildWriterDraftSystemPrompt(plan: PlanResponse, title: string): string {
   return `あなたは恋愛メディアの記事制作チームに所属する「ライター」です。
 チームには他に「編集者」（企画立案・記事の添削）と「調査員」（Web調査）がいますが、
 この段階でのあなたの仕事は次の一つだけです。
@@ -27,7 +26,7 @@ export function buildWriterDraftSystemPrompt(plan: PlanResponse): string {
 
 # 企画内容
 
-${formatPlan(plan)}
+${formatPlan(plan, title)}
 
 # 執筆の指示
 
@@ -50,6 +49,7 @@ content（本文全文、部分ではなく記事全体）を登録してくだ�
 
 export function buildWriterRevisionSystemPrompt(
   plan: PlanResponse,
+  title: string,
   previousDraft: DraftResponse,
   isFinalAttempt: boolean
 ): string {
@@ -61,7 +61,7 @@ export function buildWriterRevisionSystemPrompt(
 
 # 企画内容
 
-${formatPlan(plan)}
+${formatPlan(plan, title)}
 
 # 直前の原稿（${previousDraft.revisionNumber === 0 ? "初稿" : `${previousDraft.revisionNumber}回目の修正稿`}）
 

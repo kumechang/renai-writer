@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const RECOMMENDED_TITLE_COUNT = 10;
+
 // 編集者(Claude)が submit_plan ツールで送ってくる企画データの検証。
 export const createPlanSchema = z
   .object({
@@ -11,27 +13,29 @@ export const createPlanSchema = z
     titleCandidates: z
       .array(z.string().min(1))
       .length(50, "titleCandidates はちょうど50件である必要があります"),
-    recommendedTitle: z.string().min(1, "recommendedTitle は必須です"),
+    recommendedTitles: z
+      .array(z.string().min(1))
+      .length(
+        RECOMMENDED_TITLE_COUNT,
+        `recommendedTitles はちょうど${RECOMMENDED_TITLE_COUNT}件である必要があります`
+      ),
   })
-  .refine((data) => data.titleCandidates.includes(data.recommendedTitle), {
-    message: "recommendedTitle は titleCandidates に含まれている必要があります",
-    path: ["recommendedTitle"],
+  .refine(
+    (data) => data.recommendedTitles.every((title) => data.titleCandidates.includes(title)),
+    {
+      message: "recommendedTitles はすべて titleCandidates に含まれている必要があります",
+      path: ["recommendedTitles"],
+    }
+  )
+  .refine((data) => new Set(data.recommendedTitles).size === data.recommendedTitles.length, {
+    message: "recommendedTitles に重複があります",
+    path: ["recommendedTitles"],
   });
 export type CreatePlanInput = z.infer<typeof createPlanSchema>;
 
-export const planStatusValues = [
-  "planning",
-  "drafting",
-  "in_review",
-  "needs_revision",
-  "accepted",
-  "accepted_with_reservation",
-  "needs_human_review",
-  "archived",
-] as const;
+export const planStatusValues = ["planning", "ready", "archived"] as const;
 
 export const updatePlanSchema = z.object({
-  selectedTitle: z.string().min(1).nullable().optional(),
   status: z.enum(planStatusValues).optional(),
 });
 export type UpdatePlanInput = z.infer<typeof updatePlanSchema>;

@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { fetchJson } from "../shared/http";
 import { extractText } from "../shared/anthropic";
 import { createRequestResearchTool } from "../shared/requestResearchTool";
-import type { AgentRunConfig, DraftResponse, PlanResponse } from "../shared/types";
+import type { AgentRunConfig, ArticleResponse, DraftResponse, PlanResponse } from "../shared/types";
 import { buildEditorPlanningSystemPrompt, buildEditorReviewSystemPrompt } from "./systemPrompt";
 import { createReviewDraftTool, createSubmitPlanTool } from "./tools";
 
@@ -10,23 +10,26 @@ const MODEL = "claude-sonnet-5";
 
 export interface PlanResult {
   planId: string;
+  articleId: string;
+  title: string;
   summary: string;
 }
 
 // 編集者による企画立案。テーマから想定読者・構成・ボリューム・有料部分・
-// タイトル案50個を作らせ、submit_plan で登録させる。
+// タイトル案50個(うち推奨10個)を作らせ、submit_plan で登録させる。
+// 自動実行パイプラインは1記事のみを書くため、推奨タイトルの1つ目でArticleも作成する。
 export async function runEditorPlanning(
   theme: string,
   config: AgentRunConfig
 ): Promise<PlanResult> {
   const client = new Anthropic();
-  let planId: string | undefined;
+  let created: { planId: string; articleId: string; title: string } | undefined;
 
   const submitPlanTool = createSubmitPlanTool({
     apiBaseUrl: config.apiBaseUrl,
     theme,
-    onCreated: (id) => {
-      planId = id;
+    onCreated: (result) => {
+      created = result;
     },
   });
   const requestResearchTool = createRequestResearchTool({
@@ -56,11 +59,11 @@ export async function runEditorPlanning(
   const finalMessage = await runner.done();
   const summary = extractText(finalMessage);
 
-  if (!planId) {
+  if (!created) {
     throw new Error("編集者が企画(submit_plan)を登録しませんでした");
   }
 
-  return { planId, summary };
+  return { ...created, summary };
 }
 
 export interface ReviewResult {
@@ -74,13 +77,17 @@ export interface ReviewResult {
 // review_draft で登録させる。
 export async function runEditorReview(
   planId: string,
+  articleId: string,
   draftId: string,
   isFinalAttempt: boolean,
   config: AgentRunConfig
 ): Promise<ReviewResult> {
   const plan = await fetchJson<PlanResponse>(`${config.apiBaseUrl}/api/plans/${planId}`);
+  const article = await fetchJson<ArticleResponse>(
+    `${config.apiBaseUrl}/api/plans/${planId}/articles/${articleId}`
+  );
   const draft = await fetchJson<DraftResponse>(
-    `${config.apiBaseUrl}/api/plans/${planId}/drafts/${draftId}`
+    `${config.apiBaseUrl}/api/plans/${planId}/articles/${articleId}/drafts/${draftId}`
   );
 
   const client = new Anthropic();
@@ -89,6 +96,7 @@ export async function runEditorReview(
   const reviewDraftTool = createReviewDraftTool({
     apiBaseUrl: config.apiBaseUrl,
     planId,
+    articleId,
     draftId,
     isFinalAttempt,
     onReviewed: (r) => {
@@ -100,7 +108,7 @@ export async function runEditorReview(
     model: MODEL,
     max_tokens: 16000,
     thinking: { type: "adaptive" },
-    system: buildEditorReviewSystemPrompt(plan, draft, isFinalAttempt),
+    system: buildEditorReviewSystemPrompt(plan, article.title, draft, isFinalAttempt),
     tools: [reviewDraftTool],
     messages: [
       { role: "user", content: "この原稿をレビューし、review_draft ツールで採点してください。" },

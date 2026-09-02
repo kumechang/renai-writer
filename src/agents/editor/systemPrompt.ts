@@ -28,8 +28,8 @@ ${theme}
 5. titleCandidates（タイトル案）: ちょうど50個。読者の検索意図やクリック意欲を意識し、
    切り口が重複しないようバリエーションを持たせる（数字を使う／悩み訴求／権威付け／
    比較訴求／体験談風 など、パターンを混ぜること）。
-6. recommendedTitle: titleCandidates の中からあなたが最も良いと考える1つ。
-   これは人間による最終確認前の暫定的な推奨であり、後で変更されることがある。
+6. recommendedTitles: titleCandidates の中から、実際に記事化する価値が高いと考える
+   ちょうど10個を、良いと思う順に並べる。それぞれ別の記事として並行して執筆される。
 
 # 調査員への依頼（任意）
 
@@ -44,10 +44,10 @@ request_research ツールで調査員に依頼できます。必須ではあり
 
 export function buildEditorReviewSystemPrompt(
   plan: PlanResponse,
+  title: string,
   draft: DraftResponse,
   isFinalAttempt: boolean
 ): string {
-  const title = plan.selectedTitle ?? plan.recommendedTitle;
   const revisionLabel =
     draft.revisionNumber === 0 ? "初稿" : `${draft.revisionNumber}回目の修正稿`;
 

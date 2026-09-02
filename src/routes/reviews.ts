@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { prisma } from "../db/client";
 import { createReviewSchema } from "../schemas/review";
 
-type DraftParams = { planId: string; draftId: string };
+type DraftParams = { planId: string; articleId: string; draftId: string };
 
 function toReviewDTO(review: {
   id: string;
@@ -30,7 +30,7 @@ export const reviewsRouter = Router({ mergeParams: true });
 // 編集者が原稿を0〜100点で採点し、フィードバックとともに登録する(1原稿につき1回のみ)
 reviewsRouter.post("/", async (req: Request<DraftParams>, res: Response) => {
   const draft = await prisma.draft.findFirst({
-    where: { id: req.params.draftId, planId: req.params.planId },
+    where: { id: req.params.draftId, articleId: req.params.articleId },
   });
   if (!draft) return res.status(404).json({ error: "draft not found" });
 
@@ -60,7 +60,7 @@ reviewsRouter.post("/", async (req: Request<DraftParams>, res: Response) => {
 
 reviewsRouter.get("/", async (req: Request<DraftParams>, res: Response) => {
   const draft = await prisma.draft.findFirst({
-    where: { id: req.params.draftId, planId: req.params.planId },
+    where: { id: req.params.draftId, articleId: req.params.articleId },
   });
   if (!draft) return res.status(404).json({ error: "draft not found" });
 

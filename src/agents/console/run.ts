@@ -1,10 +1,15 @@
 import { z } from "zod";
 import type { IssueSession } from "@prisma/client";
 import { prisma } from "../../db/client";
-import { fetchGithubIssue, listIssueComments, postIssueComment } from "../../lib/github";
+import {
+  createSubIssue,
+  fetchGithubIssue,
+  listIssueComments,
+  postIssueComment,
+} from "../../lib/github";
 import { fetchJson } from "../shared/http";
 import { extractJsonBlock } from "../shared/jsonBlock";
-import type { DraftResponse, PlanResponse } from "../shared/types";
+import type { ArticleResponse, DraftResponse, PlanResponse } from "../shared/types";
 import { createPlanSchema } from "../../schemas/plan";
 import { createDraftSchema } from "../../schemas/draft";
 import { createReviewSchema } from "../../schemas/review";
@@ -51,8 +56,14 @@ async function patchJson<T>(url: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function findLatestDraft(apiBaseUrl: string, planId: string): Promise<DraftResponse> {
-  const drafts = await fetchJson<DraftResponse[]>(`${apiBaseUrl}/api/plans/${planId}/drafts`);
+async function findLatestDraft(
+  apiBaseUrl: string,
+  planId: string,
+  articleId: string
+): Promise<DraftResponse> {
+  const drafts = await fetchJson<DraftResponse[]>(
+    `${apiBaseUrl}/api/plans/${planId}/articles/${articleId}/drafts`
+  );
   const latest = drafts[drafts.length - 1];
   if (!latest) throw new Error("原稿がまだ登録されていません(内部エラー)");
   return latest;
@@ -169,6 +180,12 @@ export async function checkIssue(issueRef: IssueRef, apiBaseUrl: string): Promis
   const session = await prisma.issueSession.findUnique({ where: whereIssue(issueRef) });
 
   if (!session || !session.pendingStep || session.pendingPromptCommentId == null) {
+    if (session?.articleId) {
+      const article = await fetchJson<ArticleResponse>(
+        `${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}`
+      );
+      return `このissueに保留中のプロンプトはありません(記事のステータス: ${article.status})。`;
+    }
     if (session?.planId) {
       const plan = await fetchJson<PlanResponse>(`${apiBaseUrl}/api/plans/${session.planId}`);
       return `このissueに保留中のプロンプトはありません(企画のステータス: ${plan.status})。`;
@@ -233,6 +250,8 @@ async function handleResearchReply(
   return `調査結果を${parsed.items.length}件登録しました。`;
 }
 
+// 企画のJSON回答を登録し、推奨タイトル10個それぞれについてsub-issueとArticleを作成、
+// 各sub-issueにライターへの執筆プロンプトを投稿する。
 async function handlePlanReply(
   issueRef: IssueRef,
   session: IssueSession,
@@ -244,17 +263,68 @@ async function handlePlanReply(
 
   const planInput = createPlanSchema.parse({ theme, ...(extractJsonBlock(reply) as object) });
   const plan = await postJson<PlanResponse>(`${apiBaseUrl}/api/plans`, planInput);
-  await patchJson(`${apiBaseUrl}/api/plans/${plan.id}`, { status: "drafting" });
 
-  const prompt = buildWriterDraftConsolePrompt(plan);
-  const comment = await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, prompt);
+  const createdArticles: Array<{ title: string; issueNumber: number; url: string }> = [];
+
+  for (const title of plan.recommendedTitles) {
+    const article = await postJson<ArticleResponse>(
+      `${apiBaseUrl}/api/plans/${plan.id}/articles`,
+      { title }
+    );
+
+    const subIssue = await createSubIssue(
+      issueRef.owner,
+      issueRef.repo,
+      issueRef.number,
+      title,
+      `企画(issue ${issueRefLabel(issueRef)})から生成された記事です。\n\n` +
+        `**企画ID**: ${plan.id}\n**記事ID**: ${article.id}\n\n` +
+        "編集者への執筆プロンプトは次のコメントに投稿されます。"
+    );
+
+    const draftPrompt = buildWriterDraftConsolePrompt(plan, title);
+    const draftPromptComment = await postIssueComment(
+      issueRef.owner,
+      issueRef.repo,
+      subIssue.number,
+      draftPrompt
+    );
+
+    await prisma.issueSession.create({
+      data: {
+        issueOwner: issueRef.owner,
+        issueRepo: issueRef.repo,
+        issueNumber: subIssue.number,
+        planId: plan.id,
+        articleId: article.id,
+        pendingStep: "draft",
+        pendingPromptCommentId: BigInt(draftPromptComment.id),
+      },
+    });
+
+    createdArticles.push({ title, issueNumber: subIssue.number, url: subIssue.url });
+  }
+
+  await patchJson(`${apiBaseUrl}/api/plans/${plan.id}`, { status: "ready" });
+
+  const summaryLines = [
+    `✅ 企画を登録し(planId=${plan.id})、${createdArticles.length}件の記事issueを作成しました。`,
+    "",
+    ...createdArticles.map(
+      (a, i) => `${i + 1}. [${a.title}](${a.url}) (issue #${a.issueNumber})`
+    ),
+    "",
+    "各issueに投稿された執筆プロンプトをClaude.aiのコンソールで実行し、回答をそのissueに" +
+      "貼り付けたら、そのissue番号で `npm run console -- check` を実行してください。",
+  ];
+  await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, summaryLines.join("\n"));
 
   await prisma.issueSession.update({
     where: { id: session.id },
-    data: { planId: plan.id, pendingStep: "draft", pendingPromptCommentId: BigInt(comment.id) },
+    data: { planId: plan.id, pendingStep: null, pendingPromptCommentId: null },
   });
 
-  return `企画を登録しました(planId=${plan.id})。ライターへの執筆プロンプトをissueに投稿しました。`;
+  return `企画を登録し(planId=${plan.id})、${createdArticles.length}件の記事issueを作成しました。`;
 }
 
 async function handleDraftReply(
@@ -263,18 +333,25 @@ async function handleDraftReply(
   reply: string,
   apiBaseUrl: string
 ): Promise<string> {
-  if (!session.planId) throw new Error("planId が見つかりません(内部エラー)");
+  if (!session.planId || !session.articleId) {
+    throw new Error("planId/articleId が見つかりません(内部エラー)");
+  }
 
   const draftInput = createDraftSchema.parse(extractJsonBlock(reply));
   const draft = await postJson<DraftResponse>(
-    `${apiBaseUrl}/api/plans/${session.planId}/drafts`,
+    `${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}/drafts`,
     draftInput
   );
-  await patchJson(`${apiBaseUrl}/api/plans/${session.planId}`, { status: "in_review" });
+  await patchJson(`${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}`, {
+    status: "in_review",
+  });
 
   const plan = await fetchJson<PlanResponse>(`${apiBaseUrl}/api/plans/${session.planId}`);
+  const article = await fetchJson<ArticleResponse>(
+    `${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}`
+  );
   const isFinalAttempt = draft.revisionNumber >= MAX_REVISIONS;
-  const prompt = buildEditorReviewConsolePrompt(plan, draft, isFinalAttempt);
+  const prompt = buildEditorReviewConsolePrompt(plan, article.title, draft, isFinalAttempt);
   const comment = await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, prompt);
 
   await prisma.issueSession.update({
@@ -291,14 +368,17 @@ async function handleReviewReply(
   reply: string,
   apiBaseUrl: string
 ): Promise<string> {
-  if (!session.planId) throw new Error("planId が見つかりません(内部エラー)");
+  if (!session.planId || !session.articleId) {
+    throw new Error("planId/articleId が見つかりません(内部エラー)");
+  }
 
-  const draft = await findLatestDraft(apiBaseUrl, session.planId);
+  const draft = await findLatestDraft(apiBaseUrl, session.planId, session.articleId);
   const reviewInput = createReviewSchema.parse(extractJsonBlock(reply));
   const isFinalAttempt = draft.revisionNumber >= MAX_REVISIONS;
 
   const review = await postJson<{ score: number; passed: boolean }>(
-    `${apiBaseUrl}/api/plans/${session.planId}/drafts/${draft.id}/review`,
+    `${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}` +
+      `/drafts/${draft.id}/review`,
     { score: reviewInput.score, feedback: reviewInput.feedback, isFinalAttempt }
   );
 
@@ -310,12 +390,17 @@ async function handleReviewReply(
     return finish(issueRef, session, apiBaseUrl, status, review.score);
   }
 
-  await patchJson(`${apiBaseUrl}/api/plans/${session.planId}`, { status: "needs_revision" });
+  await patchJson(`${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}`, {
+    status: "needs_revision",
+  });
   const plan = await fetchJson<PlanResponse>(`${apiBaseUrl}/api/plans/${session.planId}`);
-  const updatedDraft = await fetchJson<DraftResponse>(
-    `${apiBaseUrl}/api/plans/${session.planId}/drafts/${draft.id}`
+  const article = await fetchJson<ArticleResponse>(
+    `${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}`
   );
-  const prompt = buildWriterRevisionConsolePrompt(plan, updatedDraft, isFinalAttempt);
+  const updatedDraft = await fetchJson<DraftResponse>(
+    `${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}/drafts/${draft.id}`
+  );
+  const prompt = buildWriterRevisionConsolePrompt(plan, article.title, updatedDraft, isFinalAttempt);
   const comment = await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, prompt);
 
   await prisma.issueSession.update({
@@ -333,17 +418,20 @@ async function finish(
   status: string,
   score: number
 ): Promise<string> {
-  if (!session.planId) throw new Error("planId が見つかりません(内部エラー)");
+  if (!session.planId || !session.articleId) {
+    throw new Error("planId/articleId が見つかりません(内部エラー)");
+  }
 
-  await patchJson(`${apiBaseUrl}/api/plans/${session.planId}`, { status });
-  const plan = await fetchJson<PlanResponse>(`${apiBaseUrl}/api/plans/${session.planId}`);
-  const draft = await findLatestDraft(apiBaseUrl, session.planId);
+  await patchJson(`${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}`, {
+    status,
+  });
+  const draft = await findLatestDraft(apiBaseUrl, session.planId, session.articleId);
 
   await postIssueComment(
     issueRef.owner,
     issueRef.repo,
     issueRef.number,
-    formatArticleComment(plan, draft, { finalScore: score, finalStatus: status })
+    formatArticleComment(draft, { finalScore: score, finalStatus: status })
   );
 
   await prisma.issueSession.update({
@@ -351,5 +439,5 @@ async function finish(
     data: { pendingStep: null, pendingPromptCommentId: null },
   });
 
-  return `パイプラインが完了しました(ステータス: ${status}, スコア: ${score}点)。記事をissueに投稿しました。`;
+  return `記事が完成しました(ステータス: ${status}, スコア: ${score}点)。issueに投稿しました。`;
 }

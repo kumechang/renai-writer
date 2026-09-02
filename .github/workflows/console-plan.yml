@@ -22,6 +22,9 @@ env:
 
 jobs:
   plan:
+    # 1企画から生成された記事用のsub-issue(auto-articleラベル付き)では発火しない。
+    # このワークフローはテーマを書いたissueに対してのみ実行する。
+    if: ${{ !contains(github.event.issue.labels.*.name, 'auto-article') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

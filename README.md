@@ -37,7 +37,8 @@ npm run dev
 | `Source` | 収集元URLの情報（ドメイン・著者・サイト名・公開日など） |
 | `ResearchItem` | 調査員が集めた個別データ。要約・重要ポイント・引用・信頼度/関連度スコア・タグを持つ |
 | `Tag` | 記事のトピックやジャンルで横断検索するためのタグ |
-| `Plan` | 編集者が立てる企画。想定読者・構成・ボリューム・有料部分の設計・タイトル案50個を持つ |
+| `Plan` | 編集者が立てる企画。想定読者・構成・ボリューム・有料部分の設計・タイトル案50個・実際に記事化する推奨タイトル10個を持つ |
+| `Article` | 企画1件から生まれる記事1本。推奨タイトル10個それぞれが1つのArticleになり、並行して独立に執筆・レビューが進む |
 | `Draft` | ライターが提出した原稿の1版（`revisionNumber` 0が初稿、1・2が差し戻し後の修正稿） |
 | `Review` | 編集者による1原稿へのレビュー結果（0〜100点のスコアとフィードバック、1原稿につき1件） |
 | `IssueSession` | 「コンソール駆動」フロー（下記）の進行状況を管理する内部テーブル。GitHub issueごとに、保留中のプロンプトと紐づくコメントIDを保持する |
@@ -92,22 +93,30 @@ npm run dev
 
 ### 企画（編集者が立案）
 
-- `POST /api/plans` — 企画作成 `{ theme, targetReader, structure, volume, paidSection, titleCandidates(50件ちょうど), recommendedTitle }`
+- `POST /api/plans` — 企画作成
+  `{ theme, targetReader, structure, volume, paidSection, titleCandidates(50件ちょうど), recommendedTitles(10件ちょうど) }`
 - `GET /api/plans` — 一覧
 - `GET /api/plans/:id` — 詳細
-- `PATCH /api/plans/:id` — 更新（`selectedTitle` の確定、`status` の遷移）
-  - `status`: `planning` / `drafting` / `in_review` / `needs_revision` / `accepted` /
-    `accepted_with_reservation` / `needs_human_review` / `archived`
+- `PATCH /api/plans/:id` — `status` の遷移（`planning` / `ready` / `archived`）
 
-### 原稿・レビュー（ライターが執筆、編集者が採点）
+### 記事（企画1件から複数、タイトルごとに独立して執筆・レビューが進む）
 
-- `POST /api/plans/:planId/drafts` — 原稿登録 `{ title, content, wordCount? }`
+- `POST /api/plans/:planId/articles` — 記事作成 `{ title }`（`titleCandidates` に含まれる必要あり）
+- `GET /api/plans/:planId/articles` — 一覧
+- `GET /api/plans/:planId/articles/:articleId` — 詳細
+- `PATCH /api/plans/:planId/articles/:articleId` — `status` の遷移
+  （`drafting` / `in_review` / `needs_revision` / `accepted` / `accepted_with_reservation` /
+  `needs_human_review`）
+
+### 原稿・レビュー（ライターが執筆、編集者が採点。記事ごとに独立）
+
+- `POST /api/plans/:planId/articles/:articleId/drafts` — 原稿登録 `{ title, content, wordCount? }`
   （`revisionNumber` は既存件数から自動採番。省略時 `wordCount` は `content.length`）
-- `GET /api/plans/:planId/drafts` — 一覧（revisionNumber昇順、レビュー結果つき）
-- `GET /api/plans/:planId/drafts/:draftId` — 詳細
-- `POST /api/plans/:planId/drafts/:draftId/review` — レビュー登録
+- `GET /api/plans/:planId/articles/:articleId/drafts` — 一覧（revisionNumber昇順、レビュー結果つき）
+- `GET /api/plans/:planId/articles/:articleId/drafts/:draftId` — 詳細
+- `POST /api/plans/:planId/articles/:articleId/drafts/:draftId/review` — レビュー登録
   `{ score(0-100), feedback, isFinalAttempt? }`（1原稿につき1回のみ、`passed` は `score>=80` から自動算出）
-- `GET /api/plans/:planId/drafts/:draftId/review` — レビュー取得
+- `GET /api/plans/:planId/articles/:articleId/drafts/:draftId/review` — レビュー取得
 
 ## エージェント
 
@@ -120,6 +129,10 @@ Claude AIへの主な問いかけは Claude.ai のコンソールで人間が手
 スクリプトはプロンプトの生成・GitHub issueへの出力・返信の解析だけを行う。
 `npm run console` 自体はAnthropic APIを一切呼び出さない。
 
+1企画（50タイトル案）から、編集者が推奨する10タイトル分の記事を並行して書く。各記事は
+GitHubのsub-issue（テーマissueの子issue）として作られ、それぞれ独立して執筆・レビュー・
+（必要なら）差し戻しが進む。
+
 ```bash
 npm run dev  # APIサーバーを起動
 
@@ -129,14 +142,18 @@ npm run console -- plan --issue kumechang/renai-writer#1
 # 2. issueに投稿されたプロンプトをClaude.aiのコンソールに貼り付けて実行し、
 #    回答(```json ... ```を含む全文)をissueにコメントとして貼り付ける
 
-# 3. 返信を解析して次のプロンプト(ライターへの執筆依頼)を投稿
+# 3. 返信を解析し、推奨タイトル10個それぞれのsub-issueを自動作成。
+#    各sub-issueにライターへの執筆プロンプトが投稿される。
 npm run console -- check --issue kumechang/renai-writer#1
 
-# 以降、「コンソールで実行→回答をissueに貼り付け→check」を繰り返すと、
-# 執筆→レビュー→(必要なら)差し戻しでの再執筆→完成、まで進み、
-# 最終的に完成した記事が同じissueにコメントとして投稿される。
+# 4. 以降は各sub-issue(記事1本ごと)で「コンソールで実行→回答を貼り付け→check」を
+#    繰り返す。そのsub-issueの番号を指定する。
+npm run console -- check --issue kumechang/renai-writer#2
 
-# (任意) 調査員への依頼を先に行いたい場合
+# 執筆→レビュー→(必要なら)差し戻しでの再執筆→完成、まで進むと、
+# 完成した記事がそのsub-issueにコメントとして投稿される。
+
+# (任意) 調査員への依頼を先に行いたい場合(企画立案の前に実行する)
 npm run console -- research --issue kumechang/renai-writer#1 \
   --title "婚活アプリの料金相場" --brief "20代向け主要アプリの月額料金を調べてほしい"
 ```
@@ -147,6 +164,10 @@ npm run console -- research --issue kumechang/renai-writer#1 \
 `console-check.yml` により自動化できる。issueを作成すると企画立案プロンプトが自動投稿され、
 issueにコメントを付けるたびに返信の解析と次のプロンプトの投稿が自動で行われる
 （テーマの登録とコンソールでの実行・回答の貼り付けは引き続き人間が行う）。
+企画の回答が解析されると、推奨タイトル10個分のsub-issueが自動作成され、以降は
+sub-issueごとに同じ仕組み（コメント→自動解析→次のプロンプト投稿）が独立して動く。
+sub-issueには`auto-article`ラベルが付き、`console-plan.yml`はこのラベルが付いた
+issueでは発火しない（テーマissueとして誤処理しないため）。
 
 利用するには以下が必要:
 

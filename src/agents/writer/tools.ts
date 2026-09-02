@@ -9,6 +9,7 @@ const submitDraftInputSchema = z.object({
 export interface SubmitDraftToolConfig {
   apiBaseUrl: string;
   planId: string;
+  articleId: string;
   onCreated: (draft: { id: string; revisionNumber: number }) => void;
 }
 
@@ -19,11 +20,14 @@ export function createSubmitDraftTool(config: SubmitDraftToolConfig) {
     description: "執筆(または修正)した記事の本文全文を登録する。差分ではなく必ず全文を渡すこと。",
     inputSchema: submitDraftInputSchema,
     run: async (input) => {
-      const res = await fetch(`${config.apiBaseUrl}/api/plans/${config.planId}/drafts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
+      const res = await fetch(
+        `${config.apiBaseUrl}/api/plans/${config.planId}/articles/${config.articleId}/drafts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }
+      );
       if (!res.ok) {
         return `原稿の登録に失敗しました (HTTP ${res.status}): ${await res.text()}`;
       }

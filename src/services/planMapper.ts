@@ -8,8 +8,7 @@ export interface PlanDTO {
   volume: string;
   paidSection: string;
   titleCandidates: string[];
-  recommendedTitle: string;
-  selectedTitle: string | null;
+  recommendedTitles: string[];
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -33,8 +32,7 @@ export function toPlanDTO(plan: Plan): PlanDTO {
     volume: plan.volume,
     paidSection: plan.paidSection,
     titleCandidates: safeParseArray(plan.titleCandidates),
-    recommendedTitle: plan.recommendedTitle,
-    selectedTitle: plan.selectedTitle,
+    recommendedTitles: safeParseArray(plan.recommendedTitles),
     status: plan.status,
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),

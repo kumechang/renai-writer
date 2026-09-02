@@ -13,14 +13,20 @@ export interface PlanResponse {
   volume: string;
   paidSection: string;
   titleCandidates: string[];
-  recommendedTitle: string;
-  selectedTitle: string | null;
+  recommendedTitles: string[];
+  status: string;
+}
+
+export interface ArticleResponse {
+  id: string;
+  planId: string;
+  title: string;
   status: string;
 }
 
 export interface DraftResponse {
   id: string;
-  planId: string;
+  articleId: string;
   revisionNumber: number;
   title: string;
   content: string;

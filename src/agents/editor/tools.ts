@@ -11,37 +11,57 @@ const submitPlanInputSchema = z
     volume: z.string().min(1).describe("全体および無料/有料部分の目安文字数"),
     paidSection: z.string().min(1).describe("有料部分の区切り位置とその狙い"),
     titleCandidates: z.array(z.string().min(1)).length(50).describe("タイトル案(ちょうど50個)"),
-    recommendedTitle: z.string().min(1).describe("titleCandidatesの中から推奨する1つ"),
+    recommendedTitles: z
+      .array(z.string().min(1))
+      .length(10)
+      .describe("titleCandidatesの中から実際に記事化する10個(良い順)"),
   })
-  .refine((data) => data.titleCandidates.includes(data.recommendedTitle), {
-    message: "recommendedTitle は titleCandidates に含まれている必要があります",
-    path: ["recommendedTitle"],
-  });
+  .refine(
+    (data) => data.recommendedTitles.every((title) => data.titleCandidates.includes(title)),
+    {
+      message: "recommendedTitles は titleCandidates に含まれている必要があります",
+      path: ["recommendedTitles"],
+    }
+  );
 
 export interface SubmitPlanToolConfig {
   apiBaseUrl: string;
   theme: string;
-  onCreated: (planId: string) => void;
+  // 自動実行パイプラインは1記事のみを書くため、recommendedTitles[0]でArticleも作成する
+  onCreated: (result: { planId: string; articleId: string; title: string }) => void;
 }
 
 export function createSubmitPlanTool(config: SubmitPlanToolConfig) {
   return betaZodTool({
     name: "submit_plan",
     description:
-      "検討した記事企画(想定読者・構成・ボリューム・有料部分の設計・タイトル案50個)を登録する。",
+      "検討した記事企画(想定読者・構成・ボリューム・有料部分の設計・タイトル案50個・" +
+      "推奨タイトル10個)を登録する。",
     inputSchema: submitPlanInputSchema,
     run: async (input) => {
-      const res = await fetch(`${config.apiBaseUrl}/api/plans`, {
+      const planRes = await fetch(`${config.apiBaseUrl}/api/plans`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theme: config.theme, ...input }),
       });
-      if (!res.ok) {
-        return `企画の登録に失敗しました (HTTP ${res.status}): ${await res.text()}`;
+      if (!planRes.ok) {
+        return `企画の登録に失敗しました (HTTP ${planRes.status}): ${await planRes.text()}`;
       }
-      const created = (await res.json()) as { id: string };
-      config.onCreated(created.id);
-      return `企画を登録しました: id=${created.id}`;
+      const plan = (await planRes.json()) as { id: string };
+
+      const title = input.recommendedTitles[0];
+      const articleRes = await fetch(`${config.apiBaseUrl}/api/plans/${plan.id}/articles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (!articleRes.ok) {
+        return `記事の登録に失敗しました (HTTP ${articleRes.status}): ${await articleRes.text()}`;
+      }
+      const article = (await articleRes.json()) as { id: string };
+
+      config.onCreated({ planId: plan.id, articleId: article.id, title });
+      return `企画を登録しました: planId=${plan.id} articleId=${article.id} title=${title}`;
     },
   });
 }
@@ -54,6 +74,7 @@ const reviewDraftInputSchema = z.object({
 export interface ReviewDraftToolConfig {
   apiBaseUrl: string;
   planId: string;
+  articleId: string;
   draftId: string;
   isFinalAttempt: boolean;
   onReviewed: (result: { score: number; passed: boolean; feedback: string }) => void;
@@ -66,7 +87,8 @@ export function createReviewDraftTool(config: ReviewDraftToolConfig) {
     inputSchema: reviewDraftInputSchema,
     run: async (input) => {
       const res = await fetch(
-        `${config.apiBaseUrl}/api/plans/${config.planId}/drafts/${config.draftId}/review`,
+        `${config.apiBaseUrl}/api/plans/${config.planId}/articles/${config.articleId}` +
+          `/drafts/${config.draftId}/review`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -80,35 +80,50 @@ model Tag {
 
 // 編集者が立てる記事企画。テーマ(GitHub issue等)から、想定読者・構成・
 // ボリューム・有料部分の設計・タイトル案までを1件にまとめて保持する。
+// 1つの企画(50タイトル案)から、複数の記事(Article)を並行して書き分けることを想定する。
 model Plan {
-  id               String   @id @default(cuid())
-  theme            String
-  targetReader     String
-  // Markdown形式の構成案(見出しごとに何を書くか)
-  structure        String
+  id              String   @id @default(cuid())
+  theme           String
+  targetReader    String
+  // Markdown形式の構成案(見出しごとに何を書くか。各Articleが土台として使う)
+  structure       String
   // 記事全体および無料/有料部分の目安文字数の説明
-  volume           String
+  volume          String
   // 有料部分の区切り位置とその狙いの説明
-  paidSection      String
+  paidSection     String
   // タイトル案(JSON配列、ちょうど50件)
-  titleCandidates  String
-  // 編集者が50件の中から選んだ推奨タイトル(人間による最終確認前の暫定案)
-  recommendedTitle String
-  // 人間またはワークフローが確定させたタイトル。未確定の間はnull
-  selectedTitle    String?
-  // planning -> drafting -> in_review -> (needs_revision を経て再度drafting) ->
+  titleCandidates String
+  // 編集者が50件の中から選んだ、実際に記事化する推奨タイトル(JSON配列、ちょうど10件)
+  recommendedTitles String
+  // planning: submit_plan前 / ready: 各タイトルのArticleが作成済み
+  status          String   @default("planning")
+  articles        Article[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// 1つの企画から生まれる記事1本。タイトルごとに独立して執筆・レビューが進む。
+model Article {
+  id        String   @id @default(cuid())
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  // Plan.titleCandidatesのいずれかと一致する、この記事のタイトル
+  title     String
+  // drafting -> in_review -> (needs_revision を経て再度drafting) ->
   // accepted / accepted_with_reservation / needs_human_review
-  status           String   @default("planning")
-  drafts           Draft[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  status    String   @default("drafting")
+  drafts    Draft[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId])
 }
 
 // ライターが提出した原稿の1版。revisionNumber 0が初稿、1・2が差し戻し後の修正稿。
 model Draft {
   id             String   @id @default(cuid())
-  planId         String
-  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  articleId      String
+  article        Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
   revisionNumber Int
   title          String
   content        String
@@ -116,7 +131,7 @@ model Draft {
   review         Review?
   createdAt      DateTime @default(now())
 
-  @@index([planId])
+  @@index([articleId])
 }
 
 // 編集者による1原稿へのレビュー結果。1原稿につき1件。
@@ -144,8 +159,10 @@ model IssueSession {
   issueRepo   String
   issueNumber Int
 
-  topicId String?
-  planId  String?
+  topicId   String?
+  planId    String?
+  // sub-issue(1記事に対応)の場合にセットされる
+  articleId String?
 
   // 保留中のステップ。null は保留中のプロンプトが無い状態。
   // "research" | "plan" | "draft" | "review"

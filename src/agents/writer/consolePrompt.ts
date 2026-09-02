@@ -2,8 +2,7 @@ import type { DraftResponse, PlanResponse } from "../shared/types";
 
 const PAID_SECTION_MARKER = "<!-- PAID_SECTION -->";
 
-function formatPlan(plan: PlanResponse): string {
-  const title = plan.selectedTitle ?? plan.recommendedTitle;
+function formatPlan(plan: PlanResponse, title: string): string {
   return `- テーマ: ${plan.theme}
 - 想定読者: ${plan.targetReader}
 - 記事の構成:
@@ -15,15 +14,20 @@ ${plan.structure}
 
 // Claude.aiのコンソールに人間が直接コピー&ペーストして実行するためのプロンプト。
 // API経由のtool useが使えないため、「JSONコードブロック1つだけを出力する」形式に統一する。
+// title は企画(Plan)の推奨タイトル10個のうち、この記事(Article)に割り当てられた1つ。
 
-export function buildWriterDraftConsolePrompt(plan: PlanResponse, researchBriefing?: string): string {
+export function buildWriterDraftConsolePrompt(
+  plan: PlanResponse,
+  title: string,
+  researchBriefing?: string
+): string {
   return `あなたは恋愛メディアの記事制作チームに所属する「ライター」です。
 この会話でのあなたの仕事は、編集者が立てた企画をもとに記事本文を執筆することだけです。
 企画の変更や採点はあなたの仕事ではありません。
 
 # 企画内容
 
-${formatPlan(plan)}
+${formatPlan(plan, title)}
 ${researchBriefing ? `\n# 調査員による調査資料\n\n${researchBriefing}\n` : ""}
 # 執筆の指示
 
@@ -52,6 +56,7 @@ content内の改行は \\n でエスケープしてください（有効なJSON�
 
 export function buildWriterRevisionConsolePrompt(
   plan: PlanResponse,
+  title: string,
   previousDraft: DraftResponse,
   isFinalAttempt: boolean
 ): string {
@@ -63,7 +68,7 @@ export function buildWriterRevisionConsolePrompt(
 
 # 企画内容
 
-${formatPlan(plan)}
+${formatPlan(plan, title)}
 
 # 直前の原稿（${previousDraft.revisionNumber === 0 ? "初稿" : `${previousDraft.revisionNumber}回目の修正稿`}）
 

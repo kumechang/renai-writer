@@ -24,7 +24,10 @@ ${researchBriefing ? `\n# 調査員による既存の調査資料\n\n${researchB
 5. titleCandidates（タイトル案）: ちょうど50個。読者の検索意図やクリック意欲を意識し、
    切り口が重複しないようバリエーションを持たせる（数字を使う／悩み訴求／権威付け／
    比較訴求／体験談風 など、パターンを混ぜること）。
-6. recommendedTitle: titleCandidates の中からあなたが最も良いと考える1つ。
+6. recommendedTitles: titleCandidates の中から、実際に記事化する価値が高いと考える
+   ちょうど10個を、良いと思う順に並べる。この10個は、それぞれ別の記事として
+   並行して執筆される。切り口が似すぎている組み合わせは避け、想定読者の異なる悩みや
+   検索意図をカバーするように選ぶこと。
 
 # 回答形式（重要）
 
@@ -38,17 +41,17 @@ ${researchBriefing ? `\n# 調査員による既存の調査資料\n\n${researchB
   "volume": "string",
   "paidSection": "string",
   "titleCandidates": ["string を50個ちょうど"],
-  "recommendedTitle": "titleCandidatesのいずれか1つと完全に一致する文字列"
+  "recommendedTitles": ["titleCandidatesのうちの10個(重複なし)を良い順に"]
 }
 \`\`\``;
 }
 
 export function buildEditorReviewConsolePrompt(
   plan: PlanResponse,
+  title: string,
   draft: DraftResponse,
   isFinalAttempt: boolean
 ): string {
-  const title = plan.selectedTitle ?? plan.recommendedTitle;
   const revisionLabel =
     draft.revisionNumber === 0 ? "初稿" : `${draft.revisionNumber}回目の修正稿`;
 

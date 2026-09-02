@@ -7,7 +7,7 @@ try {
 
 import { fetchGithubIssue, postIssueComment } from "../../lib/github";
 import { fetchJson } from "../shared/http";
-import type { DraftResponse, PlanResponse } from "../shared/types";
+import type { DraftResponse } from "../shared/types";
 import { formatArticleComment } from "./formatComment";
 import { runArticlePipeline } from "./run";
 
@@ -76,9 +76,8 @@ async function main() {
   console.log(JSON.stringify(result, null, 2));
 
   if (issueRef) {
-    const plan = await fetchJson<PlanResponse>(`${apiBaseUrl}/api/plans/${result.planId}`);
     const draft = await fetchJson<DraftResponse>(
-      `${apiBaseUrl}/api/plans/${result.planId}/drafts/${result.finalDraftId}`
+      `${apiBaseUrl}/api/plans/${result.planId}/articles/${result.articleId}/drafts/${result.finalDraftId}`
     );
 
     console.log(`\n=== GitHub issue へ記事を投稿中: ${args.issue} ===`);
@@ -86,7 +85,7 @@ async function main() {
       issueRef.owner,
       issueRef.repo,
       issueRef.number,
-      formatArticleComment(plan, draft, result)
+      formatArticleComment(draft, result)
     );
     console.log("投稿が完了しました。");
   }

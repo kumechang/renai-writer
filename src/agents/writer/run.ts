@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { fetchJson } from "../shared/http";
 import { extractText } from "../shared/anthropic";
 import { createRequestResearchTool } from "../shared/requestResearchTool";
-import type { AgentRunConfig, DraftResponse, PlanResponse } from "../shared/types";
+import type { AgentRunConfig, ArticleResponse, DraftResponse, PlanResponse } from "../shared/types";
 import { buildWriterDraftSystemPrompt, buildWriterRevisionSystemPrompt } from "./systemPrompt";
 import { createSubmitDraftTool } from "./tools";
 
@@ -18,7 +18,8 @@ async function runWriterTool(
   systemPrompt: string,
   userMessage: string,
   config: AgentRunConfig,
-  planId: string
+  planId: string,
+  articleId: string
 ): Promise<DraftResult> {
   const client = new Anthropic();
   let created: { id: string; revisionNumber: number } | undefined;
@@ -26,6 +27,7 @@ async function runWriterTool(
   const submitDraftTool = createSubmitDraftTool({
     apiBaseUrl: config.apiBaseUrl,
     planId,
+    articleId,
     onCreated: (d) => {
       created = d;
     },
@@ -65,15 +67,20 @@ async function runWriterTool(
 // ライターによる初稿執筆。企画に沿って記事本文を書かせ、submit_draft で登録させる。
 export async function runWriterDraft(
   planId: string,
+  articleId: string,
   config: AgentRunConfig
 ): Promise<DraftResult> {
   const plan = await fetchJson<PlanResponse>(`${config.apiBaseUrl}/api/plans/${planId}`);
+  const article = await fetchJson<ArticleResponse>(
+    `${config.apiBaseUrl}/api/plans/${planId}/articles/${articleId}`
+  );
 
   return runWriterTool(
-    buildWriterDraftSystemPrompt(plan),
+    buildWriterDraftSystemPrompt(plan, article.title),
     "企画に沿って記事本文を執筆してください。",
     config,
-    planId
+    planId,
+    articleId
   );
 }
 
@@ -81,19 +88,24 @@ export async function runWriterDraft(
 // submit_draft で新しい版として登録させる。
 export async function runWriterRevision(
   planId: string,
+  articleId: string,
   previousDraftId: string,
   isFinalAttempt: boolean,
   config: AgentRunConfig
 ): Promise<DraftResult> {
   const plan = await fetchJson<PlanResponse>(`${config.apiBaseUrl}/api/plans/${planId}`);
+  const article = await fetchJson<ArticleResponse>(
+    `${config.apiBaseUrl}/api/plans/${planId}/articles/${articleId}`
+  );
   const previousDraft = await fetchJson<DraftResponse>(
-    `${config.apiBaseUrl}/api/plans/${planId}/drafts/${previousDraftId}`
+    `${config.apiBaseUrl}/api/plans/${planId}/articles/${articleId}/drafts/${previousDraftId}`
   );
 
   return runWriterTool(
-    buildWriterRevisionSystemPrompt(plan, previousDraft, isFinalAttempt),
+    buildWriterRevisionSystemPrompt(plan, article.title, previousDraft, isFinalAttempt),
     "編集者のフィードバックを踏まえて原稿を修正してください。",
     config,
-    planId
+    planId,
+    articleId
   );
 }
