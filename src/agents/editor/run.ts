@@ -6,7 +6,7 @@ import type { AgentRunConfig, DraftResponse, PlanResponse } from "../shared/type
 import { buildEditorPlanningSystemPrompt, buildEditorReviewSystemPrompt } from "./systemPrompt";
 import { createReviewDraftTool, createSubmitPlanTool } from "./tools";
 
-const MODEL = "claude-opus-5";
+const MODEL = "claude-sonnet-5";
 
 export interface PlanResult {
   planId: string;

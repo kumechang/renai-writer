@@ -1,6 +1,6 @@
 # エージェント一覧 (Claude API)
 
-編集者・ライター・調査員の3ロールを Claude API（`claude-opus-5`）で実際に動かすための
+編集者・ライター・調査員の3ロールを Claude API（`claude-sonnet-5`）で実際に動かすための
 プロンプト・ツール定義・実行スクリプト。すべて `src/agents/pipeline` が一気通貫で
 オーケストレーションする。
 

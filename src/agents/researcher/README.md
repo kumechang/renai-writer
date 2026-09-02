@@ -1,6 +1,6 @@
 # 調査員エージェント (Claude API)
 
-Claude API（`claude-opus-5`）で「調査員」ロールを実際に動かすためのプロンプトとツール定義。
+Claude API（`claude-sonnet-5`）で「調査員」ロールを実際に動かすためのプロンプトとツール定義。
 `web_search` / `web_fetch`（Anthropicのサーバー側ツール）でWeb上の情報を集め、
 1件ごとに `submit_research_item` ツールを呼び出して、このリポジトリのAPI
 （`POST /api/topics/:topicId/items`）へそのまま登録する。
@@ -55,7 +55,7 @@ npm run researcher -- xxxxx
   `createResearchItemSchema` と項目を揃えているが、Anthropic SDKの `betaZodTool` が
   zod/v4 の型を要求するため、`tools.ts` 側で zod/v4 として別途定義している
   （REST API側のバリデーションは引き続き classic zod(v3) で行われる）。
-- モデルは `claude-opus-5` を使用（Anthropicの現行モデルの中で最も高性能なため）。
+- モデルは `claude-sonnet-5` を使用（`claude-opus-5` の1/2.5程度のコストで運用するため）。
 - `web_search` / `web_fetch` はいずれもAnthropicのサーバー側で実行されるツールで、
   1回の実行あたりの利用回数を `max_uses` で制限している（コスト・実行時間の上限）。
 - 長時間の調査でサーバー側ツールの呼び出し回数上限に達すると `pause_turn` が返る

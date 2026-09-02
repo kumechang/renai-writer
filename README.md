@@ -110,7 +110,7 @@ npm run dev
 
 ## エージェント（Claude API）
 
-編集者・ライター・調査員の3ロールを Claude API（`claude-opus-5`）で実際に動かすプロンプト・
+編集者・ライター・調査員の3ロールを Claude API（`claude-sonnet-5`）で実際に動かすプロンプト・
 ツール定義・実行スクリプトを `src/agents/` に用意している。企画立案→執筆→レビュー→
 （必要なら）差し戻しまでを一気通貫で実行するパイプラインも含む。詳細は
 [`src/agents/README.md`](src/agents/README.md) を参照。

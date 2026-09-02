@@ -4,7 +4,7 @@ import { extractText } from "../shared/anthropic";
 import { buildResearcherSystemPrompt } from "./systemPrompt";
 import { createSubmitResearchItemTool, webFetchTool, webSearchTool } from "./tools";
 
-const MODEL = "claude-opus-5";
+const MODEL = "claude-sonnet-5";
 
 interface TopicResponse {
   id: string;
