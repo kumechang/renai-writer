@@ -1,0 +1,7 @@
+{
+  "approvalMode": "manual",
+  "claudeModel": "claude-sonnet-5",
+  "xCharLimit": 280,
+  "selfCheckPassThreshold": 75,
+  "maxGenerateRetries": 2
+}

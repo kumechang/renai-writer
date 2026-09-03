@@ -1,0 +1,75 @@
+name: X Post - Generate
+
+# 完成した記事(Article)を紹介するX投稿の文面をClaude APIで生成し、GitHub issueでの
+# 承認待ちにする(amazon-sentaku-shiageのX自動投稿の仕組みを流用)。
+# コンソール駆動フローと違い、このワークフローはAnthropic APIを直接呼び出すため費用が発生する。
+# 手動実行(workflow_dispatch)のみで、記事の完成をトリガーに自動発火はしない
+# (npm run console はAnthropic API費用ゼロが前提のため、その完了処理には組み込まない)。
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "記事(Article)が紐づいたsub-issue (owner/repo#番号)。省略するとまだXで宣伝していない完成記事から自動で選ぶ"
+        required: false
+        type: string
+      url:
+        description: "記事の公開URL(任意。issueを指定した場合のみ有効。省略するとURLを含まない投稿文を生成する)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: console-state
+  cancel-in-progress: false
+
+env:
+  DATABASE_URL: file:./bot.db
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Generate X post for the article
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: |
+          if [ -n "${{ inputs.issue }}" ] && [ -n "${{ inputs.url }}" ]; then
+            npm run x-post:generate -- --issue "${{ inputs.issue }}" --url "${{ inputs.url }}"
+          elif [ -n "${{ inputs.issue }}" ]; then
+            npm run x-post:generate -- --issue "${{ inputs.issue }}"
+          else
+            npm run x-post:generate
+          fi
+
+      - name: Persist bot database
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prisma/bot.db
+          git diff --cached --quiet || git commit -m "chore(bot): update state after x-post generate [skip ci]"
+          git pull --rebase --autostash
+          git push

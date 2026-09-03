@@ -1,0 +1,63 @@
+name: X Post - Handle Approval
+
+# X投稿承認issueへの「承認」/「却下」コメントを検知し、承認ならXへ投稿する
+# (amazon-sentaku-shiageのhandle-approval.ymlを流用)。
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: console-state
+  cancel-in-progress: false
+
+env:
+  DATABASE_URL: file:./bot.db
+
+jobs:
+  handle-approval:
+    runs-on: ubuntu-latest
+    # pending-x-post-approvalラベルが無いissueや、承認/却下と無関係なコメントには反応しない
+    # (記事issueでのコンソール駆動フローのやり取りと衝突しないためのガード)。
+    if: >
+      contains(github.event.issue.labels.*.name, 'pending-x-post-approval') &&
+      (contains(github.event.comment.body, '承認') || contains(github.event.comment.body, '却下'))
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Handle approval comment
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: npm run x-post:handle-approval
+
+      # if: always() — 例えば承認後のX投稿自体が失敗しても、承認された事実や
+      # post_failedへの状態遷移はコミットして残す(既に処理済み判定ができなくなるのを防ぐ)。
+      - name: Persist bot database
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prisma/bot.db
+          git diff --cached --quiet || git commit -m "chore(bot): update state after x-post approval [skip ci]"
+          git pull --rebase --autostash
+          git push

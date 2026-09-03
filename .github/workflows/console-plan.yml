@@ -22,9 +22,12 @@ env:
 
 jobs:
   plan:
-    # 1企画から生成された記事用のsub-issue(auto-articleラベル付き)では発火しない。
+    # 1企画から生成された記事用のsub-issue(auto-articleラベル付き)や、X投稿承認issue
+    # (pending-x-post-approvalラベル付き、x-post-generate.ymlが作成する)では発火しない。
     # このワークフローはテーマを書いたissueに対してのみ実行する。
-    if: ${{ !contains(github.event.issue.labels.*.name, 'auto-article') }}
+    if: >
+      !contains(github.event.issue.labels.*.name, 'auto-article') &&
+      !contains(github.event.issue.labels.*.name, 'pending-x-post-approval')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

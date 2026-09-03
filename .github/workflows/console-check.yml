@@ -24,7 +24,12 @@ env:
 
 jobs:
   check:
-    if: github.event.comment.user.login != 'github-actions[bot]'
+    # X投稿承認issue(pending-x-post-approvalラベル付き)への「承認」/「却下」コメントは
+    # x-post-approval.ymlが処理するため、このワークフローでは反応しない
+    # (反応しても実害はない設計だが、無駄なActions実行を避けるため明示的に除外する)。
+    if: >
+      github.event.comment.user.login != 'github-actions[bot]' &&
+      !contains(github.event.issue.labels.*.name, 'pending-x-post-approval')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
