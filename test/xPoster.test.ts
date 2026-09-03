@@ -1,13 +1,15 @@
 import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { renderPrompt } from "../src/xPoster/promptLoader";
 import { buildArticleExcerpt } from "../src/xPoster/generatePost";
 import { getWeightedLength } from "../src/xPoster/tweetLength";
 import { parseApprovalEvent } from "../src/xPoster/approval";
 import { buildIssueBody } from "../src/xPoster/approvalIssue";
+import { selectArticleForPost } from "../src/xPoster/selectArticle";
 import type { SelfCheckResult } from "../src/xPoster/selfCheckPost";
+import { prisma } from "../src/db/client";
 
 describe("renderPrompt", () => {
   it("replaces {{key}} placeholders with the given values", () => {
@@ -111,8 +113,8 @@ describe("buildIssueBody", () => {
       articleTitle: "テスト記事",
       finalText: "冒頭の一文。続きは記事で。",
       selfCheck,
-      sourceIssueOwner: "kumechang",
-      sourceIssueRepo: "renai-writer",
+      repoOwner: "kumechang",
+      repoName: "renai-writer",
       sourceIssueNumber: 12,
     });
     expect(body).toContain("テスト記事");
@@ -127,11 +129,101 @@ describe("buildIssueBody", () => {
       articleTitle: "テスト記事",
       finalText: "本文",
       selfCheck: { ...selfCheck, score: 40, pass: false, problems: ["広告っぽい"] },
-      sourceIssueOwner: "kumechang",
-      sourceIssueRepo: "renai-writer",
+      repoOwner: "kumechang",
+      repoName: "renai-writer",
       sourceIssueNumber: 12,
     });
     expect(body).toContain("不合格");
     expect(body).toContain("広告っぽい");
+  });
+
+  it("omits the source issue line when the article has no known origin issue", () => {
+    const body = buildIssueBody({
+      articleTitle: "テスト記事",
+      finalText: "本文",
+      selfCheck,
+      repoOwner: "kumechang",
+      repoName: "renai-writer",
+      sourceIssueNumber: null,
+    });
+    expect(body).not.toContain("記事issue:");
+  });
+});
+
+describe("selectArticleForPost", () => {
+  // 各テストを完全に独立させる(前のテストで作った記事が残っていると、乱択の結果が
+  // どちらのテストの記事になるか不定になってしまうため)。
+  beforeEach(async () => {
+    await prisma.xPost.deleteMany();
+    await prisma.article.deleteMany();
+    await prisma.plan.deleteMany();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  async function createPlan() {
+    const candidates = Array.from({ length: 50 }, (_, i) => `候補${i + 1}`);
+    return prisma.plan.create({
+      data: {
+        theme: "テストテーマ",
+        targetReader: "テスト読者",
+        structure: "## 導入",
+        volume: "1000字",
+        paidSection: "後半を有料化",
+        titleCandidates: JSON.stringify(candidates),
+        recommendedTitles: JSON.stringify(candidates.slice(0, 10)),
+      },
+    });
+  }
+
+  it("picks only articles that are accepted and not yet promoted", async () => {
+    const plan = await createPlan();
+
+    const promotable = await prisma.article.create({
+      data: { planId: plan.id, title: "宣伝対象の記事", status: "accepted" },
+    });
+    await prisma.article.create({
+      data: { planId: plan.id, title: "レビュー中の記事", status: "in_review" },
+    });
+    const alreadyPosted = await prisma.article.create({
+      data: { planId: plan.id, title: "投稿済みの記事", status: "accepted" },
+    });
+    await prisma.xPost.create({
+      data: {
+        articleId: alreadyPosted.id,
+        draftId: "dummy-draft-id",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+      },
+    });
+
+    const selected = await selectArticleForPost();
+    expect(selected.id).toBe(promotable.id);
+  });
+
+  it("allows re-selecting an article whose only XPost was rejected", async () => {
+    const plan = await createPlan();
+    const article = await prisma.article.create({
+      data: { planId: plan.id, title: "却下後に再挑戦する記事", status: "accepted_with_reservation" },
+    });
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        draftId: "dummy-draft-id",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "rejected",
+      },
+    });
+
+    const selected = await selectArticleForPost();
+    expect(selected.id).toBe(article.id);
+  });
+
+  it("throws a clear error when there is nothing left to promote", async () => {
+    await expect(selectArticleForPost()).rejects.toThrow(/宣伝可能な未投稿の記事/);
   });
 });

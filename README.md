@@ -205,15 +205,21 @@ ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚�
 呼び出すため費用が発生する（`src/agents/pipeline/` の自動実行フローと同様の位置づけ）。
 
 ```bash
-# 記事(Article)が紐づいたsub-issue(auto-articleラベル付き)を指定して投稿文を生成し、
-# GitHub issue(pending-x-post-approvalラベル)で承認待ちにする。
-ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... npm run x-post:generate -- \
-  --issue kumechang/renai-writer#12
+# 引数なしで実行すると、まだXで宣伝していない完成記事(accepted / accepted_with_reservation)
+# の中から1件を自動で選んで投稿文を生成し、GitHub issue(pending-x-post-approvalラベル)で
+# 承認待ちにする。記事が増えていっても、都度issue番号を指定する必要はない。
+ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... GITHUB_REPOSITORY=kumechang/renai-writer \
+  npm run x-post:generate
 
-# 記事の公開先URLが決まっている場合は --url で渡すと投稿文に含める(省略可)
-ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... npm run x-post:generate -- \
-  --issue kumechang/renai-writer#12 --url "https://example.com/articles/xxx"
+# 宣伝する記事を明示的に指定したい場合は --issue で紐づいたsub-issueを指定する
+# (auto-articleラベル付きのissue)。記事の公開先URLが決まっている場合は --url も渡せる
+# (--issueを指定した場合のみ有効。省略するとURLを含まない投稿文になる)。
+ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... GITHUB_REPOSITORY=kumechang/renai-writer \
+  npm run x-post:generate -- --issue kumechang/renai-writer#12 --url "https://example.com/articles/xxx"
 ```
+
+自動選択の対象は「承認待ち・承認済み・投稿済みのXPostがまだ無い記事」で、却下・投稿失敗
+だけの記事は再挑戦対象として選ばれうる。対象が1件もない場合はエラーで終了する。
 
 承認issueに「承認」または「却下」とコメントすると、`.github/workflows/x-post-approval.yml`
 （`npm run x-post:handle-approval`）が反応し、承認ならXへ投稿する。手動での動作確認のみなら

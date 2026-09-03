@@ -5,22 +5,20 @@ import { selfCheckPost, type SelfCheckResult } from "./selfCheckPost";
 import { getWeightedLength } from "./tweetLength";
 import { createXPostApprovalIssue } from "./approvalIssue";
 import { finalizeXPost } from "./finalizePost";
-
-export interface SourceIssueRef {
-  owner: string;
-  repo: string;
-  number: number;
-}
-
-// Xで告知してよい記事のステータス(条件付き成立を含む。要人間確認の記事は対象外)。
-const PROMOTABLE_STATUSES = ["accepted", "accepted_with_reservation"];
+import { parseGithubRepository } from "./env";
+import { selectArticleForPost, PROMOTABLE_ARTICLE_STATUSES } from "./selectArticle";
 
 export interface GenerateXPostOptions {
+  // 明示的に記事を指定する場合のみ渡す。省略時はまだ宣伝していない完成記事から自動で選ぶ
+  // (「毎回投稿を考えるときに完成記事の中からネタを拾ってほしい」という運用に対応するため)。
+  articleId?: string;
   articleUrl?: string;
 }
 
 export interface GenerateXPostResult {
   xPostId: string;
+  articleId: string;
+  articleTitle: string;
   finalText: string;
   score: number;
   pass: boolean;
@@ -29,29 +27,28 @@ export interface GenerateXPostResult {
 }
 
 // 記事(Article)を紹介するX投稿を1件作るパイプライン全体の統括役。
-// 本文生成 → セルフチェック(文字数超過なら規定回数までやり直す) → DB保存 → 承認issue作成、
-// の順に実行し、最後にautoモードならその場で投稿まで行う
+// 記事選択(未指定なら自動選択) → 本文生成 → セルフチェック(文字数超過なら規定回数まで
+// やり直す) → DB保存 → 承認issue作成、の順に実行し、最後にautoモードならその場で投稿まで行う
 // (amazon-sentaku-shiageのgenerateCandidate.tsと同じ構成)。
-export async function generateXPostForArticle(
-  articleId: string,
-  sourceIssue: SourceIssueRef,
-  options: GenerateXPostOptions = {}
-): Promise<GenerateXPostResult> {
+export async function generateXPost(options: GenerateXPostOptions = {}): Promise<GenerateXPostResult> {
   const config = loadXPosterConfig();
 
-  const article = await prisma.article.findUnique({ where: { id: articleId } });
-  if (!article) throw new Error(`article not found: ${articleId}`);
-  if (!PROMOTABLE_STATUSES.includes(article.status)) {
-    throw new Error(
-      `この記事はXでの告知対象のステータスではありません(status=${article.status}, 対象: ${PROMOTABLE_STATUSES.join("/")})`
-    );
-  }
+  const article = options.articleId
+    ? await requireArticle(options.articleId)
+    : await selectArticleForPost();
 
   const draft = await prisma.draft.findFirst({
-    where: { articleId },
+    where: { articleId: article.id },
     orderBy: { revisionNumber: "desc" },
   });
-  if (!draft) throw new Error(`記事にまだ原稿がありません(articleId=${articleId})`);
+  if (!draft) throw new Error(`記事にまだ原稿がありません(articleId=${article.id})`);
+
+  const repo = parseGithubRepository();
+  if (!repo) {
+    throw new Error(
+      "GITHUB_REPOSITORY(owner/repo形式)が設定されていません。承認issueの作成先が分からないため中断します。"
+    );
+  }
 
   let generatedText = await generatePost(config.claudeModel, {
     articleTitle: article.title,
@@ -97,21 +94,23 @@ export async function generateXPostForArticle(
 
   const xPost = await prisma.xPost.create({
     data: {
-      articleId,
+      articleId: article.id,
       draftId: draft.id,
       articleUrl: options.articleUrl ?? null,
       generatedText,
       finalText,
       selfCheckJson: JSON.stringify(selfCheck.data),
       status: "pending_approval",
-      githubIssueOwner: sourceIssue.owner,
-      githubIssueRepo: sourceIssue.repo,
+      githubIssueOwner: repo.owner,
+      githubIssueRepo: repo.repo,
     },
   });
 
   if (!process.env.GITHUB_TOKEN) {
     return {
       xPostId: xPost.id,
+      articleId: article.id,
+      articleTitle: article.title,
       finalText,
       score: selfCheck.data.score,
       pass: selfCheck.data.pass,
@@ -120,13 +119,15 @@ export async function generateXPostForArticle(
     };
   }
 
+  const originSession = await prisma.issueSession.findFirst({ where: { articleId: article.id } });
+
   const issue = await createXPostApprovalIssue({
     articleTitle: article.title,
     finalText,
     selfCheck: selfCheck.data,
-    sourceIssueOwner: sourceIssue.owner,
-    sourceIssueRepo: sourceIssue.repo,
-    sourceIssueNumber: sourceIssue.number,
+    repoOwner: repo.owner,
+    repoName: repo.repo,
+    sourceIssueNumber: originSession?.issueNumber ?? null,
   });
 
   const updated = await prisma.xPost.update({
@@ -141,6 +142,8 @@ export async function generateXPostForArticle(
     const posted = await prisma.xPost.findUniqueOrThrow({ where: { id: xPost.id } });
     return {
       xPostId: posted.id,
+      articleId: article.id,
+      articleTitle: article.title,
       finalText,
       score: selfCheck.data.score,
       pass: selfCheck.data.pass,
@@ -151,12 +154,25 @@ export async function generateXPostForArticle(
 
   return {
     xPostId: updated.id,
+    articleId: article.id,
+    articleTitle: article.title,
     finalText,
     score: selfCheck.data.score,
     pass: selfCheck.data.pass,
     status: updated.status,
     githubIssueUrl: updated.githubIssueUrl,
   };
+}
+
+async function requireArticle(articleId: string) {
+  const article = await prisma.article.findUnique({ where: { id: articleId } });
+  if (!article) throw new Error(`article not found: ${articleId}`);
+  if (!PROMOTABLE_ARTICLE_STATUSES.includes(article.status)) {
+    throw new Error(
+      `この記事はXでの告知対象のステータスではありません(status=${article.status}, 対象: ${PROMOTABLE_ARTICLE_STATUSES.join("/")})`
+    );
+  }
+  return article;
 }
 
 interface RunSelfCheckInput {

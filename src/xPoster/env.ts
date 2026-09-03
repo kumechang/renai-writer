@@ -15,3 +15,12 @@ export function hasXCredentials(): boolean {
     xEnv.accessSecret.length > 0
   );
 }
+
+// 承認issueをどのリポジトリに作るか。GitHub Actions上では `github.repository` が
+// 自動で入るが、ローカル実行時は .env に GITHUB_REPOSITORY=owner/repo を設定する。
+export function parseGithubRepository(): { owner: string; repo: string } | null {
+  const value = process.env.GITHUB_REPOSITORY ?? "";
+  const parts = value.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  return { owner: parts[0], repo: parts[1] };
+}

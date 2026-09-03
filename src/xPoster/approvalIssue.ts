@@ -6,9 +6,12 @@ export interface ApprovalIssueContent {
   articleTitle: string;
   finalText: string;
   selfCheck: SelfCheckResult;
-  sourceIssueOwner: string;
-  sourceIssueRepo: string;
-  sourceIssueNumber: number;
+  // 承認issueを作成するリポジトリ。
+  repoOwner: string;
+  repoName: string;
+  // 記事(Article)が生まれた元のsub-issue番号。IssueSessionが見つからない場合はnull
+  // (コンソール駆動フロー以外の経路で記事が作られた場合など)。
+  sourceIssueNumber: number | null;
 }
 
 // Issue本文を組み立てる。承認者が本文だけを見て判断できるよう、投稿候補・スコア・
@@ -19,11 +22,14 @@ export function buildIssueBody(content: ApprovalIssueContent): string {
   const problems = selfCheck.problems.length > 0 ? selfCheck.problems.map((p) => `- ${p}`).join("\n") : "(なし)";
   const improvements =
     selfCheck.improvements.length > 0 ? selfCheck.improvements.map((i) => `- ${i}`).join("\n") : "(なし)";
-  const sourceIssueLabel = `${content.sourceIssueOwner}/${content.sourceIssueRepo}#${content.sourceIssueNumber}`;
+  const sourceIssueLine =
+    content.sourceIssueNumber != null
+      ? `記事issue: ${content.repoOwner}/${content.repoName}#${content.sourceIssueNumber}`
+      : null;
 
   return [
     `## 記事: ${content.articleTitle}`,
-    `記事issue: ${sourceIssueLabel}`,
+    ...(sourceIssueLine ? [sourceIssueLine] : []),
     "",
     "## 投稿候補",
     "```",
@@ -47,7 +53,5 @@ export function buildIssueBody(content: ApprovalIssueContent): string {
 export async function createXPostApprovalIssue(content: ApprovalIssueContent): Promise<CreatedIssue> {
   const title = `X投稿承認: ${content.articleTitle}`;
   const body = buildIssueBody(content);
-  return createIssue(content.sourceIssueOwner, content.sourceIssueRepo, title, body, [
-    PENDING_X_POST_APPROVAL_LABEL,
-  ]);
+  return createIssue(content.repoOwner, content.repoName, title, body, [PENDING_X_POST_APPROVAL_LABEL]);
 }

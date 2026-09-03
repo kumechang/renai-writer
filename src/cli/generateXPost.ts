@@ -6,9 +6,15 @@ try {
 }
 
 import { prisma } from "../db/client";
-import { generateXPostForArticle, type SourceIssueRef } from "../xPoster/pipeline";
+import { generateXPost } from "../xPoster/pipeline";
 
-function parseIssueRef(issue: string): SourceIssueRef {
+interface IssueRef {
+  owner: string;
+  repo: string;
+  number: number;
+}
+
+function parseIssueRef(issue: string): IssueRef {
   const match = issue.match(/^([^/]+)\/([^#]+)#(\d+)$/);
   if (!match) {
     throw new Error(
@@ -26,25 +32,38 @@ function getArg(argv: string[], name: string): string | undefined {
 
 const USAGE =
   "使い方:\n" +
+  "  npm run x-post:generate\n" +
+  '    → まだXで宣伝していない完成記事(accepted / accepted_with_reservation)の中から\n' +
+  "      1件を自動で選んで投稿文を生成する。\n" +
   '  npm run x-post:generate -- --issue owner/repo#番号 [--url "https://記事の公開URL"]\n' +
+  "    → 記事(Article)を明示的に指定する場合。--issue には記事が紐づいたsub-issue\n" +
+  "      (auto-articleラベルが付いたissue)を指定する。\n" +
   "\n" +
-  "--issue には、記事(Article)が紐づいたsub-issue(auto-articleラベルが付いたissue)を指定してください。\n" +
-  "--url は省略可能です(省略した場合、URLを含まない投稿文を生成します)。\n" +
+  "--url は --issue を指定した場合のみ有効(自動選択時はどの記事が選ばれるか事前に\n" +
+  "分からないため、URLは指定できない)。省略した場合、URLを含まない投稿文を生成する。\n" +
   "\n" +
-  "ANTHROPIC_API_KEY(投稿文の生成) と GITHUB_TOKEN(承認issueの作成) が必要です。";
+  "ANTHROPIC_API_KEY(投稿文の生成)、GITHUB_TOKEN(承認issueの作成)、\n" +
+  "GITHUB_REPOSITORY(承認issueの作成先、owner/repo形式)が必要です。";
 
-// npm run x-post:generate -- --issue owner/repo#番号 のエントリポイント。
+// npm run x-post:generate [-- --issue owner/repo#番号] のエントリポイント。
 // ライターが書き上げた記事(Article)をもとに、Xで告知する投稿文をClaude APIで生成し、
 // GitHub issueでの人による承認待ちにする(amazon-sentaku-shiageのX自動投稿の仕組みを流用)。
 async function main() {
   const argv = process.argv.slice(2);
   const issueArg = getArg(argv, "--issue");
   const url = getArg(argv, "--url");
-  if (!issueArg) {
+
+  if (url && !issueArg) {
     throw new Error(USAGE);
   }
-  const issueRef = parseIssueRef(issueArg);
 
+  if (!issueArg) {
+    const result = await generateXPost();
+    printResult(result);
+    return;
+  }
+
+  const issueRef = parseIssueRef(issueArg);
   const session = await prisma.issueSession.findUnique({
     where: {
       issueOwner_issueRepo_issueNumber: {
@@ -58,9 +77,12 @@ async function main() {
     throw new Error(`このissueには記事(Article)が紐づいていません: ${issueArg}`);
   }
 
-  const result = await generateXPostForArticle(session.articleId, issueRef, { articleUrl: url });
+  const result = await generateXPost({ articleId: session.articleId, articleUrl: url });
+  printResult(result);
+}
 
-  console.log(`X投稿を生成しました(status=${result.status}, スコア=${result.score}点)`);
+function printResult(result: Awaited<ReturnType<typeof generateXPost>>): void {
+  console.log(`記事「${result.articleTitle}」のX投稿を生成しました(status=${result.status}, スコア=${result.score}点)`);
   console.log("---");
   console.log(result.finalText);
   console.log("---");

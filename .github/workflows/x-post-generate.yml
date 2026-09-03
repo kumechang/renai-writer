@@ -10,11 +10,11 @@ on:
   workflow_dispatch:
     inputs:
       issue:
-        description: "記事(Article)が紐づいたsub-issue (owner/repo#番号)"
-        required: true
+        description: "記事(Article)が紐づいたsub-issue (owner/repo#番号)。省略するとまだXで宣伝していない完成記事から自動で選ぶ"
+        required: false
         type: string
       url:
-        description: "記事の公開URL(任意。省略するとURLを含まない投稿文を生成する)"
+        description: "記事の公開URL(任意。issueを指定した場合のみ有効。省略するとURLを含まない投稿文を生成する)"
         required: false
         type: string
 
@@ -50,15 +50,18 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
         run: |
-          if [ -n "${{ inputs.url }}" ]; then
+          if [ -n "${{ inputs.issue }}" ] && [ -n "${{ inputs.url }}" ]; then
             npm run x-post:generate -- --issue "${{ inputs.issue }}" --url "${{ inputs.url }}"
-          else
+          elif [ -n "${{ inputs.issue }}" ]; then
             npm run x-post:generate -- --issue "${{ inputs.issue }}"
+          else
+            npm run x-post:generate
           fi
 
       - name: Persist bot database
