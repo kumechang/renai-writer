@@ -3,6 +3,61 @@ export interface GithubIssue {
   body: string;
 }
 
+function requireGithubTokenForWrite(action: string): string {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error(`GITHUB_TOKEN が設定されていません(${action}には issues:write 権限を持つトークンが必要です)`);
+  }
+  return token;
+}
+
+export interface CreatedIssue {
+  number: number;
+  url: string;
+}
+
+// ラベル付きのissueを新規作成する(X投稿承認issueなど、既存issueと独立した用途に使う)。
+export async function createIssue(
+  owner: string,
+  repo: string,
+  title: string,
+  body: string,
+  labels: string[]
+): Promise<CreatedIssue> {
+  const token = requireGithubTokenForWrite("issueの作成");
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
+    method: "POST",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ title, body, labels }),
+  });
+  if (!res.ok) {
+    throw new Error(`issueの作成に失敗しました: ${res.status} ${await res.text()}`);
+  }
+  const data = (await res.json()) as { number: number; html_url: string };
+  return { number: data.number, url: data.html_url };
+}
+
+// issueをクローズする(処理結果のコメントは別途 postIssueComment で行う)。
+export async function closeIssue(owner: string, repo: string, issueNumber: number): Promise<void> {
+  const token = requireGithubTokenForWrite("issueのクローズ");
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    method: "PATCH",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ state: "closed" }),
+  });
+  if (!res.ok) {
+    throw new Error(`issueのクローズに失敗しました: ${res.status} ${await res.text()}`);
+  }
+}
+
 // テーマを記載したGitHub issueの本文を取得する。
 // GITHUB_TOKEN が設定されていればprivateリポジトリにも対応する。
 export async function fetchGithubIssue(

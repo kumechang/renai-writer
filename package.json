@@ -16,18 +16,23 @@
     "researcher": "ts-node src/agents/researcher/runResearcher.ts",
     "pipeline": "ts-node src/agents/pipeline/runPipeline.ts",
     "console": "ts-node src/agents/console/runConsole.ts",
-    "ci:server": "ts-node src/index.ts"
+    "ci:server": "ts-node src/index.ts",
+    "x-post:generate": "ts-node src/cli/generateXPost.ts",
+    "x-post:handle-approval": "ts-node src/cli/handleXPostApproval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
     "@prisma/client": "^5.20.0",
     "express": "^4.21.0",
+    "twitter-api-v2": "^1.19.0",
+    "twitter-text": "^3.1.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.15",
     "@types/supertest": "^6.0.2",
+    "@types/twitter-text": "^3.1.10",
     "prisma": "^5.20.0",
     "supertest": "^7.0.0",
     "ts-node": "^10.9.2",

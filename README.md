@@ -194,6 +194,43 @@ ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚�
 
 両方式の詳細・仕組みは [`src/agents/README.md`](src/agents/README.md) を参照。
 
+## X投稿（完成した記事の告知）
+
+完成した記事（`Article.status` が `accepted` / `accepted_with_reservation`）を、Xで告知する
+投稿文をライターの人格でClaude APIに生成させ、GitHub issueでの人による承認を経てXに投稿する
+仕組み。**amazon-sentaku-shiageリポジトリのX自動投稿の仕組み（Claude APIでの文面生成→
+セルフチェック→GitHub issueでの承認→X投稿）をそのまま流用している。**
+
+コンソール駆動フロー（`npm run console`）とは独立した機能で、Anthropic API・X APIを直接
+呼び出すため費用が発生する（`src/agents/pipeline/` の自動実行フローと同様の位置づけ）。
+
+```bash
+# 記事(Article)が紐づいたsub-issue(auto-articleラベル付き)を指定して投稿文を生成し、
+# GitHub issue(pending-x-post-approvalラベル)で承認待ちにする。
+ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... npm run x-post:generate -- \
+  --issue kumechang/renai-writer#12
+
+# 記事の公開先URLが決まっている場合は --url で渡すと投稿文に含める(省略可)
+ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... npm run x-post:generate -- \
+  --issue kumechang/renai-writer#12 --url "https://example.com/articles/xxx"
+```
+
+承認issueに「承認」または「却下」とコメントすると、`.github/workflows/x-post-approval.yml`
+（`npm run x-post:handle-approval`）が反応し、承認ならXへ投稿する。手動での動作確認のみなら
+`npm run x-post:handle-approval` を `GITHUB_EVENT_PATH` を指定して直接実行することもできる。
+
+投稿文の生成自体は `.github/workflows/x-post-generate.yml`（`workflow_dispatch`、手動実行のみ）
+からも実行できる。記事の完成（`npm run console -- check`）に自動連動はしていない
+（コンソール駆動フローのAnthropic API費用ゼロという前提を崩さないため、意図的に分離している）。
+
+設定は `config/x-poster.json`（承認モード・使用モデル・文字数上限など）と
+`config/x_account_info.md`（Xアカウントのペルソナ・トーン）で調整する。`approvalMode` を
+`"auto"` にすると、セルフチェック合格時は承認を待たずその場で投稿する
+（不合格の場合は `"auto"` でも必ず人の承認待ちに倒す）。
+
+必要な環境変数（`X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_SECRET`）は
+`.env.example` を参照。X APIキーが未設定でもドライラン（ログ出力のみ）で動作する。
+
 ## テスト
 
 ```bash

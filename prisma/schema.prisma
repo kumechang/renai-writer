@@ -113,6 +113,7 @@ model Article {
   // accepted / accepted_with_reservation / needs_human_review
   status    String   @default("drafting")
   drafts    Draft[]
+  xPosts    XPost[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -175,4 +176,42 @@ model IssueSession {
   updatedAt DateTime @updatedAt
 
   @@unique([issueOwner, issueRepo, issueNumber])
+}
+
+// 完成した記事(Article)をXで告知する投稿。ライターが記事を宣伝する文面を作成し、
+// GitHub issueでの人による承認を経てXに投稿する(amazon-sentaku-shiageのX自動投稿の
+// 仕組み(Claude APIでの文面生成・セルフチェック・Issue承認・X投稿)を流用している)。
+model XPost {
+  id        String  @id @default(cuid())
+  articleId String
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  draftId   String
+  // 記事の公開先URL(任意)。renai-writer自体は記事を公開しないため、公開後に運用者が指定する。
+  articleUrl String?
+
+  generatedText String
+  // セルフチェック後の最終投稿文(不合格なら修正済み)。実際にXへ投稿されるのはこちら。
+  finalText     String
+  selfCheckJson String?
+
+  // pending_approval -> approved / rejected -> posted / posted_dryrun / post_failed
+  status String @default("pending_approval")
+
+  githubIssueOwner  String?
+  githubIssueRepo   String?
+  githubIssueNumber Int?
+  githubIssueUrl    String?
+
+  approvedBy      String?
+  rejectedBy      String?
+  rejectionReason String?
+
+  tweetId       String?
+  tweetUrl      String?
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([articleId])
 }
