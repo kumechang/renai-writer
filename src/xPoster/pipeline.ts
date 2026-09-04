@@ -3,10 +3,16 @@ import { loadXPosterConfig } from "./config";
 import { generatePost } from "./generatePost";
 import { selfCheckPost, type SelfCheckResult } from "./selfCheckPost";
 import { getWeightedLength } from "./tweetLength";
+import { shortenPost } from "./shortenPost";
 import { createXPostApprovalIssue } from "./approvalIssue";
 import { finalizeXPost } from "./finalizePost";
 import { parseGithubRepository } from "./env";
 import { selectArticleForPost, PROMOTABLE_ARTICLE_STATUSES } from "./selectArticle";
+
+// 生成+セルフチェックのやり直し(config.maxGenerateRetries)でも文字数超過が
+// 解消しない場合の最終手段として、専用の短縮パスを最大この回数まで試す
+// (amazon-sentaku-shiageのgenerateCandidate.tsのMAX_SHORTEN_ATTEMPTSと同じ)。
+const MAX_SHORTEN_ATTEMPTS = 3;
 
 export interface GenerateXPostOptions {
   // 明示的に記事を指定する場合のみ渡す。省略時はまだ宣伝していない完成記事から自動で選ぶ
@@ -54,6 +60,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
     articleTitle: article.title,
     articleContent: draft.content,
     articleUrl: options.articleUrl,
+    charLimit: config.xCharLimit,
   });
 
   let selfCheck = await runSelfCheck(config.claudeModel, config.selfCheckPassThreshold, {
@@ -75,6 +82,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
       articleTitle: article.title,
       articleContent: draft.content,
       articleUrl: options.articleUrl,
+      charLimit: config.xCharLimit,
     });
     selfCheck = await runSelfCheck(config.claudeModel, config.selfCheckPassThreshold, {
       generatedPost: generatedText,
@@ -86,9 +94,21 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
     weightedLength = getWeightedLength(finalText);
   }
 
+  // 生成のやり直しを重ねても文字数超過が解消しない場合の最終手段として、
+  // 「今の文章を明示的に縮める」専用パスを収まるまで複数回かける
+  // (ゼロから再生成するだけでは短くなる保証がなく、頭打ちになることがあるため)。
+  for (
+    let attempt = 1;
+    weightedLength > config.xCharLimit && attempt <= MAX_SHORTEN_ATTEMPTS;
+    attempt++
+  ) {
+    finalText = await shortenPost(config.claudeModel, finalText, config.xCharLimit, attempt);
+    weightedLength = getWeightedLength(finalText);
+  }
+
   if (weightedLength > config.xCharLimit) {
     throw new Error(
-      `生成した投稿が文字数上限を超過したままです(規定回数のやり直し後も解消せず): ${weightedLength} > ${config.xCharLimit}`
+      `生成した投稿が文字数上限を超過したままです(規定回数のやり直し・短縮後も解消せず): ${weightedLength} > ${config.xCharLimit}`
     );
   }
 
