@@ -1,8 +1,5 @@
 import type { DraftResponse, PlanResponse } from "../shared/types";
-
-// HTMLコメント構文(<!-- ... -->)は、GitHub上での表示やツール経由での読み取り時に
-// 意図せず消えたり見落とされたりすることがあったため、プレーンテキストの角括弧に変更した。
-const PAID_SECTION_MARKER = "[PAID_SECTION]";
+import { CURRENT_PAID_SECTION_MARKER, detectPaidSectionMarker } from "../shared/paidSectionMarker";
 
 function formatPlan(plan: PlanResponse, title: string): string {
   return `- テーマ: ${plan.theme}
@@ -36,7 +33,7 @@ ${formatPlan(plan, title)}
 - 構成（見出し）に沿って、想定読者に向けて書いてください。見出しはMarkdown記法
   （##, ### など）で書いてください。
 - 有料部分の開始位置に、本文中で1回だけ次のマーカーを単独の行として挿入してください:
-  ${PAID_SECTION_MARKER}
+  ${CURRENT_PAID_SECTION_MARKER}
 - ボリュームの目安（全体および無料/有料部分の文字数）に沿ってください。
 - 事実やデータを書く場合は、実際に確認した情報のみを使ってください。数値や統計など
   裏付けが必要な場合は request_research ツールで調査員に依頼できます（必須ではありません）。
@@ -56,6 +53,7 @@ export function buildWriterRevisionSystemPrompt(
   isFinalAttempt: boolean
 ): string {
   const review = previousDraft.review;
+  const paidSectionMarker = detectPaidSectionMarker(previousDraft.content);
 
   return `あなたは恋愛メディアの記事制作チームに所属する「ライター」です。
 この段階でのあなたの仕事は、編集者のレビューを踏まえて原稿を修正することだけです。
@@ -81,7 +79,7 @@ ${review?.feedback ?? "(フィードバックがありません)"}
 
 - フィードバックで指摘されたすべての点に対応してください。
 - あえて反映しない指摘がある場合は、その理由を短く添えてください（説明文として）。
-- 有料部分マーカー ${PAID_SECTION_MARKER} は本文中に1回だけ残してください。
+- 有料部分マーカー ${paidSectionMarker} は本文中に1回だけ残してください。
 - 事実やデータの裏付けが必要な場合は request_research ツールで調査員に依頼できます
   （必須ではありません）。
 ${

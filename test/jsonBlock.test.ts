@@ -25,4 +25,11 @@ describe("extractJsonBlock", () => {
     const text = '```json\n{"a": 1}\n```\n\n```json\n{"a": 2}\n```';
     expect(extractJsonBlock(text)).toEqual({ a: 1 });
   });
+
+  it("auto-repairs an unescaped double quote inside a string value", () => {
+    // 実際にissue #5で発生した壊れ方: 強調のための "今" がエスケープされず、
+    // JSON.parseが「Expected ',' or '}'」で失敗するケース。
+    const text = '```json\n{"title": "テスト", "content": "それを"今"の話"}\n```';
+    expect(extractJsonBlock(text)).toEqual({ title: "テスト", content: 'それを"今"の話' });
+  });
 });

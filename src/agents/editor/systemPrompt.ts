@@ -1,4 +1,5 @@
 import type { PlanResponse, DraftResponse } from "../shared/types";
+import { detectPaidSectionMarker } from "../shared/paidSectionMarker";
 
 // 「編集者」ロール用システムプロンプト。企画立案フェーズとレビューフェーズで
 // 役割の範囲を明確に分け、それぞれ1つのツール呼び出しで完了させることを求める。
@@ -50,6 +51,7 @@ export function buildEditorReviewSystemPrompt(
 ): string {
   const revisionLabel =
     draft.revisionNumber === 0 ? "初稿" : `${draft.revisionNumber}回目の修正稿`;
+  const paidSectionMarker = detectPaidSectionMarker(draft.content);
 
   return `あなたは恋愛メディアの記事制作チームに所属する「編集者」です。
 この段階でのあなたの仕事は、ライターが提出した原稿をレビューし、0〜100点で採点することだけです。
@@ -73,7 +75,7 @@ ${plan.structure}
 ${draft.content}
 \`\`\`
 
-本文中の "[PAID_SECTION]" は有料部分の開始位置を示すマーカーです。採点前に、原稿全文の中に
+本文中の "${paidSectionMarker}" は有料部分の開始位置を示すマーカーです。採点前に、原稿全文の中に
 この文字列が実際に含まれているかを確認してください（見当たらない場合のみ「マーカーがない」と
 指摘すること。誤って見落とさないよう注意してください）。
 

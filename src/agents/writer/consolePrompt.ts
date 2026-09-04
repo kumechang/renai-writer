@@ -1,8 +1,5 @@
 import type { DraftResponse, PlanResponse } from "../shared/types";
-
-// HTMLコメント構文(<!-- ... -->)は、GitHub上での表示やツール経由での読み取り時に
-// 意図せず消えたり見落とされたりすることがあったため、プレーンテキストの角括弧に変更した。
-const PAID_SECTION_MARKER = "[PAID_SECTION]";
+import { CURRENT_PAID_SECTION_MARKER, detectPaidSectionMarker } from "../shared/paidSectionMarker";
 
 function formatPlan(plan: PlanResponse, title: string): string {
   return `- テーマ: ${plan.theme}
@@ -37,7 +34,7 @@ ${researchBriefing ? `\n# 調査員による調査資料\n\n${researchBriefing}\
 - 構成（見出し）に沿って、想定読者に向けて書いてください。見出しはMarkdown記法
   （##, ### など）で書いてください。
 - 有料部分の開始位置に、本文中で1回だけ次のマーカーを単独の行として挿入してください:
-  \`${PAID_SECTION_MARKER}\`（バッククォートは含めず、マーカーの文字列そのものを1行に書く）
+  \`${CURRENT_PAID_SECTION_MARKER}\`（バッククォートは含めず、マーカーの文字列そのものを1行に書く）
 - ボリュームの目安（全体および無料/有料部分の文字数）に沿ってください。
 - 事実やデータを書く場合は、実際に確認できる情報のみを使ってください。裏付けのない
   数値や事例をでっち上げないでください。
@@ -46,7 +43,9 @@ ${researchBriefing ? `\n# 調査員による調査資料\n\n${researchBriefing}\
 
 説明や前置きの文章は書かず、下記のキーを持つJSONオブジェクトを \`\`\`json ... \`\`\` の
 コードブロック1つだけで出力してください。コードブロックの外には何も書かないでください。
-content内の改行は \\n でエスケープしてください（有効なJSON文字列にすること）。
+content は有効なJSON文字列にしてください（改行は \\n、ダブルクォート " は \\"、
+バックスラッシュ \\ は \\\\ でエスケープする）。本文中で強調などに引用符を使いたい場合は、
+エスケープ漏れを避けるため二重引用符 " ではなく「」や『』を使ってください。
 
 \`\`\`json
 {
@@ -63,6 +62,7 @@ export function buildWriterRevisionConsolePrompt(
   isFinalAttempt: boolean
 ): string {
   const review = previousDraft.review;
+  const paidSectionMarker = detectPaidSectionMarker(previousDraft.content);
 
   return `あなたは恋愛メディアの記事制作チームに所属する「ライター」です。
 この会話でのあなたの仕事は、編集者のレビューを踏まえて原稿を修正することだけです。
@@ -88,7 +88,7 @@ ${review?.feedback ?? "(フィードバックがありません)"}
 
 - フィードバックで指摘されたすべての点に対応してください。
 - あえて反映しない指摘がある場合は、その理由を短く添えてください（説明文として）。
-- 有料部分マーカー \`${PAID_SECTION_MARKER}\` は本文中に1回だけ残してください（削除したり
+- 有料部分マーカー \`${paidSectionMarker}\` は本文中に1回だけ残してください（削除したり
   書き換えたりしないこと）。
 ${isFinalAttempt ? "- これが最後の修正機会です。特に重要な指摘への対応を優先してください。" : ""}
 
@@ -97,7 +97,9 @@ ${isFinalAttempt ? "- これが最後の修正機会です。特に重要な指�
 説明や前置きの文章は書かず、下記のキーを持つJSONオブジェクトを \`\`\`json ... \`\`\` の
 コードブロック1つだけで出力してください（差分ではなく必ず記事全体を渡してください）。
 コードブロックの外には何も書かないでください。
-content内の改行は \\n でエスケープしてください（有効なJSON文字列にすること）。
+content は有効なJSON文字列にしてください（改行は \\n、ダブルクォート " は \\"、
+バックスラッシュ \\ は \\\\ でエスケープする）。本文中で強調などに引用符を使いたい場合は、
+エスケープ漏れを避けるため二重引用符 " ではなく「」や『』を使ってください。
 
 \`\`\`json
 {
