@@ -5,12 +5,15 @@ import { buildArticleExcerpt } from "./generatePost";
 
 // X投稿セルフチェック.md の出力JSON形式。合否に関わらずfinal_postには
 // (不合格なら修正済みの)最終候補本文が入る想定。
+// min(1)は、合格時に「修正不要なので空でよい」とモデルが誤解し、final_postが
+// 空文字のまま返ってきた不具合の再発防止(実運用で1度発生を確認済み)。
+// 空ならバリデーションエラーとしてcallClaudeJsonの1回だけの再試行を発生させる。
 export const selfCheckSchema = z.object({
   score: z.number(),
   pass: z.boolean(),
   problems: z.array(z.string()),
   improvements: z.array(z.string()),
-  final_post: z.string(),
+  final_post: z.string().min(1, "final_post must not be empty"),
 });
 
 export type SelfCheckResult = z.infer<typeof selfCheckSchema>;
