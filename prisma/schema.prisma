@@ -182,10 +182,11 @@ model IssueSession {
 // GitHub issueでの人による承認を経てXに投稿する(amazon-sentaku-shiageのX自動投稿の
 // 仕組み(Claude APIでの文面生成・セルフチェック・Issue承認・X投稿)を流用している)。
 model XPost {
-  id        String  @id @default(cuid())
-  articleId String
-  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  draftId   String
+  id        String   @id @default(cuid())
+  // 記事に紐づかない単発投稿(恋愛系の一般的な投稿)の場合はどちらもnullになる。
+  articleId String?
+  article   Article? @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  draftId   String?
   // 記事の公開先URL(任意)。renai-writer自体は記事を公開しないため、公開後に運用者が指定する。
   articleUrl String?
 

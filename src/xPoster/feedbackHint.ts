@@ -23,11 +23,13 @@ export async function buildFeedbackHint(window: number): Promise<string | null> 
 
   for (const post of rejected) {
     if (!post.rejectionReason) continue;
-    entries.push({ at: post.updatedAt, label: post.article.title, reason: `却下理由: ${post.rejectionReason}` });
+    const label = post.article?.title ?? "単発投稿";
+    entries.push({ at: post.updatedAt, label, reason: `却下理由: ${post.rejectionReason}` });
   }
   for (const post of flagged) {
     if (!post.feedbackNotes || !post.feedbackAt) continue;
-    entries.push({ at: post.feedbackAt, label: post.article.title, reason: `投稿後の指摘: ${post.feedbackNotes}` });
+    const label = post.article?.title ?? "単発投稿";
+    entries.push({ at: post.feedbackAt, label, reason: `投稿後の指摘: ${post.feedbackNotes}` });
   }
 
   if (entries.length === 0) return null;

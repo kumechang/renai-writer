@@ -26,6 +26,13 @@ export interface XPosterConfig {
   repromotionCooldownDays: number;
   // 直近の却下・事後フィードバックのうち、次回生成時のヒントとして渡す件数。
   recentFeedbackWindow: number;
+  // 記事に紐づかない「単発投稿」(恋愛系の一般的な投稿)を選ぶ確率(0〜1)。
+  // 記事の宣伝だけに偏らないようにするための比率。宣伝可能な記事が1件もない場合は、
+  // この確率に関わらず単発投稿にフォールバックする。
+  standalonePostRatio: number;
+  // 同じ記事から作った過去の投稿・過去の単発投稿を、切り口の重複チェック用に
+  // 何件までプロンプトに渡すか。
+  recentPostsForVarietyWindow: number;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), "config/x-poster.json");

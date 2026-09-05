@@ -13,6 +13,7 @@ import { prisma } from "../src/db/client";
 import { computePostingProbability, countRemainingActiveHours } from "../src/xPoster/shouldGenerateNow";
 import { isWithinPostingWindow } from "../src/xPoster/postingWindow";
 import type { XPosterConfig } from "../src/xPoster/config";
+import { buildVarietyHint } from "../src/xPoster/varietyHint";
 
 describe("renderPrompt", () => {
   it("replaces {{key}} placeholders with the given values", () => {
@@ -31,9 +32,9 @@ describe("buildArticleExcerpt", () => {
   });
 
   it("truncates long content and appends an ellipsis", () => {
-    const content = "あ".repeat(1000);
+    const content = "あ".repeat(2500);
     const excerpt = buildArticleExcerpt(content);
-    expect(excerpt.length).toBe(801);
+    expect(excerpt.length).toBe(2001);
     expect(excerpt.endsWith("…")).toBe(true);
   });
 
@@ -158,6 +159,19 @@ describe("buildIssueBody", () => {
       repoName: "renai-writer",
       sourceIssueNumber: null,
     });
+    expect(body).not.toContain("記事issue:");
+  });
+
+  it("labels a standalone post (no article) accordingly", () => {
+    const body = buildIssueBody({
+      articleTitle: null,
+      finalText: "本文",
+      selfCheck,
+      repoOwner: "kumechang",
+      repoName: "renai-writer",
+      sourceIssueNumber: null,
+    });
+    expect(body).toContain("単発投稿");
     expect(body).not.toContain("記事issue:");
   });
 });
@@ -301,6 +315,68 @@ describe("selectArticleForPost", () => {
     });
 
     await expect(selectArticleForPost(3)).rejects.toThrow(/宣伝可能な記事が見つかりませんでした/);
+  });
+});
+
+describe("buildVarietyHint", () => {
+  beforeEach(async () => {
+    await prisma.xPost.deleteMany();
+    await prisma.article.deleteMany();
+    await prisma.plan.deleteMany();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("returns null when there are no past successful posts for the scope", async () => {
+    expect(await buildVarietyHint({ standalone: true }, 5)).toBeNull();
+  });
+
+  it("lists past standalone posts without mixing in article-bound posts", async () => {
+    const candidates = Array.from({ length: 50 }, (_, i) => `候補${i + 1}`);
+    const plan = await prisma.plan.create({
+      data: {
+        theme: "テストテーマ",
+        targetReader: "テスト読者",
+        structure: "## 導入",
+        volume: "1000字",
+        paidSection: "後半を有料化",
+        titleCandidates: JSON.stringify(candidates),
+        recommendedTitles: JSON.stringify(candidates.slice(0, 10)),
+      },
+    });
+    const article = await prisma.article.create({
+      data: { planId: plan.id, title: "記事", status: "accepted" },
+    });
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        draftId: "dummy-draft-id",
+        generatedText: "記事の投稿",
+        finalText: "記事の投稿",
+        status: "posted",
+      },
+    });
+    await prisma.xPost.create({
+      data: {
+        generatedText: "単発の投稿",
+        finalText: "単発の投稿",
+        status: "posted",
+      },
+    });
+
+    const hint = await buildVarietyHint({ standalone: true }, 5);
+    expect(hint).toContain("単発の投稿");
+    expect(hint).not.toContain("記事の投稿");
+  });
+
+  it("only counts successfully posted entries, not pending/rejected ones", async () => {
+    await prisma.xPost.create({
+      data: { generatedText: "承認待ちの単発投稿", finalText: "承認待ちの単発投稿", status: "pending_approval" },
+    });
+
+    expect(await buildVarietyHint({ standalone: true }, 5)).toBeNull();
   });
 });
 
