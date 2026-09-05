@@ -41,7 +41,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
 
   const article = options.articleId
     ? await requireArticle(options.articleId)
-    : await selectArticleForPost();
+    : await selectArticleForPost(config.repromotionCooldownDays);
 
   const draft = await prisma.draft.findFirst({
     where: { articleId: article.id },
@@ -61,6 +61,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
     articleContent: draft.content,
     articleUrl: options.articleUrl,
     charLimit: config.xCharLimit,
+    recentFeedbackWindow: config.recentFeedbackWindow,
   });
 
   let selfCheck = await runSelfCheck(config.claudeModel, config.selfCheckPassThreshold, {
@@ -83,6 +84,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
       articleContent: draft.content,
       articleUrl: options.articleUrl,
       charLimit: config.xCharLimit,
+      recentFeedbackWindow: config.recentFeedbackWindow,
     });
     selfCheck = await runSelfCheck(config.claudeModel, config.selfCheckPassThreshold, {
       generatedPost: generatedText,

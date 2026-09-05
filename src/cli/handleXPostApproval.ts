@@ -5,13 +5,18 @@ try {
   // .env が無い場合はそのまま既存の環境変数を使う
 }
 
+import type { XPost } from "@prisma/client";
 import { prisma } from "../db/client";
-import { parseApprovalEvent } from "../xPoster/approval";
+import { parseApprovalEvent, type ApprovalEvent } from "../xPoster/approval";
 import { finalizeXPost } from "../xPoster/finalizePost";
 import { postIssueComment, closeIssue } from "../lib/github";
 
 // GitHub Actions (x-post-approval.yml, issue_commentイベント) から実行されるエントリポイント。
-// 承認issueへの「承認」/「却下」コメントを検知し、承認ならXへ投稿する。
+// 承認issueへのコメントを検知し、
+//   - 承認/却下前の投稿への「承認」「却下」コメント → 承認ならXへ投稿、却下ならそこで終了
+//   - それ以外のコメント(承認/却下キーワードを含まない自由記述、または既に投稿済み等
+//     処理済みの投稿への後追いコメント) → 次回以降の生成に活かすフィードバックとして記録
+// を行う。
 async function main() {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) {
@@ -20,7 +25,7 @@ async function main() {
 
   const event = parseApprovalEvent(eventPath);
   if (event.decision === "ignore") {
-    console.log(`comment ignored (no matching label or keyword) issue=#${event.issueNumber}`);
+    console.log(`comment ignored (no matching label, or bot's own comment) issue=#${event.issueNumber}`);
     return;
   }
 
@@ -36,26 +41,22 @@ async function main() {
   }
   const { githubIssueOwner: owner, githubIssueRepo: repo } = post;
 
-  // post_failedからの再承認(投稿失敗後のリトライ)は許容するが、
-  // 既にapproved/rejected/postedになっている投稿への二重コメントはno-opにする。
+  // post_failedからの再承認(投稿失敗後のリトライ)は許容するが、それ以外の
+  // 承認待ち状態でない投稿への「承認」「却下」コメントは、承認/却下の判定をやり直さず
+  // フィードバックとして記録する(投稿後に見て気になった点を拾えるようにするため)。
   const actionable = post.status === "pending_approval" || post.status === "post_failed";
-  if (!actionable) {
-    if (event.decision === "reject" && post.status === "rejected") {
-      await prisma.xPost.update({
-        where: { id: post.id },
-        data: { rejectedBy: event.commenter, rejectionReason: event.commentBody },
-      });
-      await postIssueComment(owner, repo, event.issueNumber, "却下理由を記録しました。");
-      console.log(`rejection reason updated (postId=${post.id})`);
-      return;
-    }
 
-    await postIssueComment(owner, repo, event.issueNumber, `この投稿は既に処理済みです(状態: ${post.status})。`);
-    console.log(`post already processed, no-op (issue=#${event.issueNumber}, status=${post.status})`);
+  if (event.decision === "approve" && actionable) {
+    const approved = await prisma.xPost.update({
+      where: { id: post.id },
+      data: { status: "approved", approvedBy: event.commenter },
+    });
+    await finalizeXPost(approved);
+    console.log(`post approved and finalized (postId=${post.id})`);
     return;
   }
 
-  if (event.decision === "reject") {
+  if (event.decision === "reject" && actionable) {
     await prisma.xPost.update({
       where: { id: post.id },
       data: { status: "rejected", rejectedBy: event.commenter, rejectionReason: event.commentBody },
@@ -66,12 +67,26 @@ async function main() {
     return;
   }
 
-  const approved = await prisma.xPost.update({
+  await recordFeedback(post, event, owner, repo);
+}
+
+// 承認/却下のキーワードを含まない自由記述コメント、または既に処理済み(投稿済み・却下済み等)の
+// 投稿へのコメントを、次回以降の生成時に参照するフィードバックとしてXPostに蓄積する。
+async function recordFeedback(post: XPost, event: ApprovalEvent, owner: string, repo: string): Promise<void> {
+  const entry = `[${new Date().toISOString()}] @${event.commenter}: ${event.commentBody}`;
+  const notes = post.feedbackNotes ? `${post.feedbackNotes}\n---\n${entry}` : entry;
+
+  await prisma.xPost.update({
     where: { id: post.id },
-    data: { status: "approved", approvedBy: event.commenter },
+    data: { feedbackNotes: notes, feedbackBy: event.commenter, feedbackAt: new Date() },
   });
-  await finalizeXPost(approved);
-  console.log(`post approved and finalized (postId=${post.id})`);
+  await postIssueComment(
+    owner,
+    repo,
+    event.issueNumber,
+    "フィードバックとして記録しました。次回以降の投稿生成の参考にします。"
+  );
+  console.log(`feedback recorded (postId=${post.id}, issue=#${event.issueNumber})`);
 }
 
 main().catch((error) => {

@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 
-export type ApprovalDecision = "approve" | "reject" | "ignore";
+// approve/reject: 承認/却下issue上で明示的なキーワードが含まれるコメント。
+// feedback: それ以外の任意のコメント。承認前(却下代わりのメモ)・投稿後(投稿を見て
+// 気になった点の指摘)のどちらでも、次回以降の生成に活かすフィードバックとして拾う。
+export type ApprovalDecision = "approve" | "reject" | "feedback" | "ignore";
 
 export interface ApprovalEvent {
   decision: ApprovalDecision;
@@ -15,12 +18,14 @@ interface IssueCommentEventPayload {
   issue: { number: number; labels: { name: string }[] };
 }
 
-// このラベルが付いたissueだけを承認対象にする(無関係なコメントで誤反応しないためのガード。
-// amazon-sentaku-shiageのparseApprovalEvent.ts / PENDING_APPROVAL_LABELと同じ考え方)。
+const BOT_LOGIN = "github-actions[bot]";
+
+// このラベルが付いたissueだけを承認/フィードバック対象にする(無関係なコメントで
+// 誤反応しないためのガード。amazon-sentaku-shiageのparseApprovalEvent.tsと同じ考え方)。
 export const PENDING_X_POST_APPROVAL_LABEL = "pending-x-post-approval";
 
 // issue_commentイベントのペイロード(GITHUB_EVENT_PATHのJSON)から、
-// 「承認」/「却下」/無視すべきコメントかを判定する。
+// 「承認」/「却下」/「その他のフィードバック」/無視すべきコメントかを判定する。
 export function parseApprovalEvent(eventPath: string): ApprovalEvent {
   const raw = readFileSync(eventPath, "utf-8");
   const payload = JSON.parse(raw) as IssueCommentEventPayload;
@@ -32,7 +37,10 @@ export function parseApprovalEvent(eventPath: string): ApprovalEvent {
   const hasPendingLabel = payload.issue.labels.some(
     (label) => label.name === PENDING_X_POST_APPROVAL_LABEL
   );
-  if (!hasPendingLabel) {
+  // botが自分で投稿した結果コメント(「投稿しました」「却下されました」など)への
+  // 再反応(自己ループ)を防ぐ。ワークフロー側のif条件でも同様に除外しているが、
+  // ローカル実行など経路が違っても安全なようコード側でも保持する。
+  if (!hasPendingLabel || commenter === BOT_LOGIN) {
     return { decision: "ignore", issueNumber, commenter, commentBody };
   }
 
@@ -42,5 +50,5 @@ export function parseApprovalEvent(eventPath: string): ApprovalEvent {
   if (commentBody.includes("却下")) {
     return { decision: "reject", issueNumber, commenter, commentBody };
   }
-  return { decision: "ignore", issueNumber, commenter, commentBody };
+  return { decision: "feedback", issueNumber, commenter, commentBody };
 }

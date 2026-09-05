@@ -197,17 +197,38 @@ ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚�
 ## X投稿（完成した記事の告知）
 
 完成した記事（`Article.status` が `accepted` / `accepted_with_reservation`）を、Xで告知する
-投稿文をライターの人格でClaude APIに生成させ、GitHub issueでの人による承認を経てXに投稿する
-仕組み。**amazon-sentaku-shiageリポジトリのX自動投稿の仕組み（Claude APIでの文面生成→
-セルフチェック→GitHub issueでの承認→X投稿）をそのまま流用している。**
+投稿文をライターの人格でClaude APIに生成させ、Xに自動投稿する仕組み。
+**amazon-sentaku-shiageリポジトリのX自動投稿の仕組み（Claude APIでの文面生成→
+セルフチェック→GitHub issueでの承認→X投稿→時間帯別エンゲージメント学習）をそのまま流用している。**
 
 コンソール駆動フロー（`npm run console`）とは独立した機能で、Anthropic API・X APIを直接
 呼び出すため費用が発生する（`src/agents/pipeline/` の自動実行フローと同様の位置づけ）。
 
+### 自動投稿・ペース制御
+
+`config/x-poster.json` の既定値は `approvalMode: "auto"`（セルフチェック合格時は承認を
+待たずその場で投稿。不合格の場合は `"auto"` でも必ず人の承認待ちに倒す安全策あり）。
+
+1日あたりの目標投稿数（既定8件、`targetPostsPerDay`）を目指し、`.github/workflows/x-post-generate.yml`
+が投稿可能時間帯（既定JST 7〜24時、`postingWindow`）の間、毎時起動する。実際に生成するかは
+`src/xPoster/shouldGenerateNow.ts`（amazon-sentaku-shiageと同じロジック）が、残り目標数・
+直近投稿からの間隔・時間帯の重みをもとに判断するため、毎時起動してもClaude API呼び出し
+（コスト）は目標水準に保たれる。
+
+**投稿時間の最適化**: 時間帯ごとの重みは最初は均等（1.0）だが、`x-post-collect-metrics.yml`
+（毎日）が投稿済みツイートのエンゲージメント（いいね・リポスト・返信）を取得し、
+`x-post-analyze-posting-times.yml`（週次）がそれをClaudeに分析させて時間帯別の重みを更新する
+（データが10件貯まるまでは分析をスキップし均等のまま）。反応の良い時間帯ほど生成確率が
+上がっていく形で、ターゲット読者の活動時間に合わせて自然に最適化されていく。
+
+**記事の再宣伝**: 書き下ろし記事だけでは1日8件のペースを満たせない場合、
+`repromotionCooldownDays`（既定3日）以上前に宣伝した記事を再び宣伝候補に戻す
+（承認待ち・承認済みで処理中の記事は対象外）。未宣伝の記事・再宣伝可能な記事が
+1件もない場合はその回の生成をスキップする（定期実行では失敗扱いにしない）。
+
 ```bash
-# 引数なしで実行すると、まだXで宣伝していない完成記事(accepted / accepted_with_reservation)
-# の中から1件を自動で選んで投稿文を生成し、GitHub issue(pending-x-post-approvalラベル)で
-# 承認待ちにする。記事が増えていっても、都度issue番号を指定する必要はない。
+# 引数なしで実行すると、まだXで宣伝していない完成記事の中から1件を自動で選んで投稿文を
+# 生成する(記事が尽きていればrepromotionCooldownDays日以上前の記事を再選択する)。
 ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... GITHUB_REPOSITORY=kumechang/renai-writer \
   npm run x-post:generate
 
@@ -218,21 +239,35 @@ ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... GITHUB_REPOSITORY=kumechang/renai-
   npm run x-post:generate -- --issue kumechang/renai-writer#12 --url "https://example.com/articles/xxx"
 ```
 
-自動選択の対象は「承認待ち・承認済み・投稿済みのXPostがまだ無い記事」で、却下・投稿失敗
-だけの記事は再挑戦対象として選ばれうる。対象が1件もない場合はエラーで終了する。
+### 承認issue・フィードバックの取り込み
 
-承認issueに「承認」または「却下」とコメントすると、`.github/workflows/x-post-approval.yml`
-（`npm run x-post:handle-approval`）が反応し、承認ならXへ投稿する。手動での動作確認のみなら
-`npm run x-post:handle-approval` を `GITHUB_EVENT_PATH` を指定して直接実行することもできる。
+`approvalMode: "auto"` でも、生成された投稿ごとに承認issue（`pending-x-post-approval`
+ラベル）が作られ、実際の投稿本文・スコアが記録される（自動投稿された場合は
+「投稿しました: URL」のコメントとともにクローズされる）。
 
-投稿文の生成自体は `.github/workflows/x-post-generate.yml`（`workflow_dispatch`、手動実行のみ）
-からも実行できる。記事の完成（`npm run console -- check`）に自動連動はしていない
+投稿を見返して気になった点があれば、承認issue（クローズ済みでもよい）に自由な文面で
+コメントを残せる。「承認」「却下」といったキーワードを含まないコメントは
+**次回以降の投稿生成時の「避けるべき方向性」のヒントとして自動的に記録される**
+（`.github/workflows/x-post-approval.yml` → `npm run x-post:handle-approval`）。
+承認前の投稿に「却下 理由」とコメントすればそこで投稿は取り止められ、その理由も
+同様にヒントとして次回以降に活かされる。
+
+投稿文の生成自体は `.github/workflows/x-post-generate.yml`（`workflow_dispatch`）からも
+手動実行できる。記事の完成（`npm run console -- check`）に自動連動はしていない
 （コンソール駆動フローのAnthropic API費用ゼロという前提を崩さないため、意図的に分離している）。
 
-設定は `config/x-poster.json`（承認モード・使用モデル・文字数上限など）と
-`config/x_account_info.md`（Xアカウントのペルソナ・トーン）で調整する。`approvalMode` を
-`"auto"` にすると、セルフチェック合格時は承認を待たずその場で投稿する
-（不合格の場合は `"auto"` でも必ず人の承認待ちに倒す）。
+### 設定・関連コマンド
+
+設定は `config/x-poster.json`（承認モード・使用モデル・文字数上限・1日の目標投稿数・
+投稿可能時間帯・再宣伝までの日数など）と `config/x_account_info.md`（Xアカウントの
+ペルソナ・トーン）で調整する。
+
+```bash
+npm run x-post:generate               # 投稿文生成(自動選択 or --issue指定)
+npm run x-post:handle-approval        # 承認issueへのコメント処理(Actions経由での実行を想定)
+npm run x-post:collect-metrics        # 投稿済みツイートのエンゲージメント取得
+npm run x-post:analyze-posting-times  # エンゲージメント実績から時間帯ごとの投稿重みを算出
+```
 
 必要な環境変数（`X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_SECRET`）は
 `.env.example` を参照。X APIキーが未設定でもドライラン（ログ出力のみ）で動作する。

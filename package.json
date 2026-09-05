@@ -18,7 +18,9 @@
     "console": "ts-node src/agents/console/runConsole.ts",
     "ci:server": "ts-node src/index.ts",
     "x-post:generate": "ts-node src/cli/generateXPost.ts",
-    "x-post:handle-approval": "ts-node src/cli/handleXPostApproval.ts"
+    "x-post:handle-approval": "ts-node src/cli/handleXPostApproval.ts",
+    "x-post:collect-metrics": "ts-node src/cli/collectXPostMetrics.ts",
+    "x-post:analyze-posting-times": "ts-node src/cli/analyzeXPostTimes.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

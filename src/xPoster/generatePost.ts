@@ -1,5 +1,6 @@
 import { loadPromptTemplate, loadConfigDoc, renderPrompt } from "./promptLoader";
 import { callClaude } from "./claudeClient";
+import { buildFeedbackHint } from "./feedbackHint";
 
 // 記事本文が長いため、プロンプトに渡すのは冒頭の抜粋のみにする
 // (有料部分マーカー以降はネタバレになりうるため含めない)。
@@ -17,6 +18,7 @@ export interface GeneratePostInput {
   articleContent: string;
   articleUrl?: string;
   charLimit: number;
+  recentFeedbackWindow: number;
 }
 
 // パイプライン第1段階: 記事を紹介するX投稿の本文をClaudeに生成させる。
@@ -30,6 +32,8 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
   // (amazon-sentaku-shiageのgenerateStage.tsと同じ考え方)。
   const targetChars = Math.round(input.charLimit * 0.8);
 
+  const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
+
   const prompt = renderPrompt(template, {
     account_info: accountInfo,
     article_title: input.articleTitle,
@@ -41,6 +45,7 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
       ? "記事URL(そのまま貼り付け)"
       : "続きが気になる余韻で締める(URLは含めない)",
     char_limit_note: `投稿本文は全角${targetChars}文字程度を目標にし、絶対に全角${input.charLimit}文字を超えないでください。超えそうな場合は表現を削って短くしてください。`,
+    feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
   });
 
   const text = await callClaude(model, prompt);
