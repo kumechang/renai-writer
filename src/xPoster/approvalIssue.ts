@@ -3,14 +3,15 @@ import type { SelfCheckResult } from "./selfCheckPost";
 import { PENDING_X_POST_APPROVAL_LABEL } from "./approval";
 
 export interface ApprovalIssueContent {
-  articleTitle: string;
+  // 記事に紐づかない単発投稿の場合はnull。
+  articleTitle: string | null;
   finalText: string;
   selfCheck: SelfCheckResult;
   // 承認issueを作成するリポジトリ。
   repoOwner: string;
   repoName: string;
-  // 記事(Article)が生まれた元のsub-issue番号。IssueSessionが見つからない場合はnull
-  // (コンソール駆動フロー以外の経路で記事が作られた場合など)。
+  // 記事(Article)が生まれた元のsub-issue番号。単発投稿、またはIssueSessionが
+  // 見つからない場合(コンソール駆動フロー以外の経路で記事が作られた場合など)はnull。
   sourceIssueNumber: number | null;
 }
 
@@ -28,7 +29,7 @@ export function buildIssueBody(content: ApprovalIssueContent): string {
       : null;
 
   return [
-    `## 記事: ${content.articleTitle}`,
+    `## ${content.articleTitle ? `記事: ${content.articleTitle}` : "単発投稿(特定の記事に紐づきません)"}`,
     ...(sourceIssueLine ? [sourceIssueLine] : []),
     "",
     "## 投稿候補",
@@ -51,7 +52,7 @@ export function buildIssueBody(content: ApprovalIssueContent): string {
 }
 
 export async function createXPostApprovalIssue(content: ApprovalIssueContent): Promise<CreatedIssue> {
-  const title = `X投稿承認: ${content.articleTitle}`;
+  const title = `X投稿承認: ${content.articleTitle ?? "単発投稿"}`;
   const body = buildIssueBody(content);
   return createIssue(content.repoOwner, content.repoName, title, body, [PENDING_X_POST_APPROVAL_LABEL]);
 }

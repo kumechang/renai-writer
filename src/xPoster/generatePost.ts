@@ -1,11 +1,14 @@
 import { loadPromptTemplate, loadConfigDoc, renderPrompt } from "./promptLoader";
 import { callClaude } from "./claudeClient";
 import { buildFeedbackHint } from "./feedbackHint";
+import { buildVarietyHint } from "./varietyHint";
 
 // 記事本文が長いため、プロンプトに渡すのは冒頭の抜粋のみにする
 // (有料部分マーカー以降はネタバレになりうるため含めない)。
+// 同じ記事を複数回宣伝する際に毎回違う箇所に触れられるよう、ある程度長めに渡す
+// (短すぎると、どの回も同じ冒頭部分しか材料が無く似た投稿になりがちだったため)。
 const PAID_SECTION_MARKER = "[PAID_SECTION]";
-const EXCERPT_LENGTH = 800;
+const EXCERPT_LENGTH = 2000;
 
 export function buildArticleExcerpt(content: string): string {
   const freeSection = content.split(PAID_SECTION_MARKER)[0].trim();
@@ -14,11 +17,13 @@ export function buildArticleExcerpt(content: string): string {
 }
 
 export interface GeneratePostInput {
+  articleId: string;
   articleTitle: string;
   articleContent: string;
   articleUrl?: string;
   charLimit: number;
   recentFeedbackWindow: number;
+  recentPostsForVarietyWindow: number;
 }
 
 // パイプライン第1段階: 記事を紹介するX投稿の本文をClaudeに生成させる。
@@ -33,6 +38,7 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
   const targetChars = Math.round(input.charLimit * 0.8);
 
   const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
+  const varietyHint = await buildVarietyHint({ articleId: input.articleId }, input.recentPostsForVarietyWindow);
 
   const prompt = renderPrompt(template, {
     account_info: accountInfo,
@@ -46,6 +52,7 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
       : "続きが気になる余韻で締める(URLは含めない)",
     char_limit_note: `投稿本文は全角${targetChars}文字程度を目標にし、絶対に全角${input.charLimit}文字を超えないでください。超えそうな場合は表現を削って短くしてください。`,
     feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
+    variety_hint: varietyHint ?? "(この記事からの投稿はまだありません)",
   });
 
   const text = await callClaude(model, prompt);

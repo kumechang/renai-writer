@@ -11,5 +11,7 @@
   },
   "minSpacingHours": 1,
   "repromotionCooldownDays": 3,
-  "recentFeedbackWindow": 10
+  "recentFeedbackWindow": 10,
+  "standalonePostRatio": 0.3,
+  "recentPostsForVarietyWindow": 5
 }
