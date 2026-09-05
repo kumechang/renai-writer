@@ -10,6 +10,9 @@ import { buildIssueBody } from "../src/xPoster/approvalIssue";
 import { selectArticleForPost } from "../src/xPoster/selectArticle";
 import type { SelfCheckResult } from "../src/xPoster/selfCheckPost";
 import { prisma } from "../src/db/client";
+import { computePostingProbability, countRemainingActiveHours } from "../src/xPoster/shouldGenerateNow";
+import { isWithinPostingWindow } from "../src/xPoster/postingWindow";
+import type { XPosterConfig } from "../src/xPoster/config";
 
 describe("renderPrompt", () => {
   it("replaces {{key}} placeholders with the given values", () => {
@@ -89,10 +92,19 @@ describe("parseApprovalEvent", () => {
     expect(parseApprovalEvent(eventPath).decision).toBe("ignore");
   });
 
-  it("ignores comments unrelated to approval/rejection", () => {
+  it("treats comments without approval/rejection keywords as feedback", () => {
     const eventPath = writeEventPayload({
       action: "created",
-      comment: { body: "いいですね", user: { login: "kumechang" } },
+      comment: { body: "このトーンちょっと気になる", user: { login: "kumechang" } },
+      issue: { number: 42, labels: [{ name: "pending-x-post-approval" }] },
+    });
+    expect(parseApprovalEvent(eventPath).decision).toBe("feedback");
+  });
+
+  it("ignores the bot's own comments to avoid self-triggering loops", () => {
+    const eventPath = writeEventPayload({
+      action: "created",
+      comment: { body: "@kumechang により却下されました。", user: { login: "github-actions[bot]" } },
       issue: { number: 42, labels: [{ name: "pending-x-post-approval" }] },
     });
     expect(parseApprovalEvent(eventPath).decision).toBe("ignore");
@@ -200,7 +212,7 @@ describe("selectArticleForPost", () => {
       },
     });
 
-    const selected = await selectArticleForPost();
+    const selected = await selectArticleForPost(3);
     expect(selected.id).toBe(promotable.id);
   });
 
@@ -219,11 +231,137 @@ describe("selectArticleForPost", () => {
       },
     });
 
-    const selected = await selectArticleForPost();
+    const selected = await selectArticleForPost(3);
     expect(selected.id).toBe(article.id);
   });
 
   it("throws a clear error when there is nothing left to promote", async () => {
-    await expect(selectArticleForPost()).rejects.toThrow(/宣伝可能な未投稿の記事/);
+    await expect(selectArticleForPost(3)).rejects.toThrow(/宣伝可能な記事が見つかりませんでした/);
+  });
+
+  it("never re-selects an article that is still pending approval, regardless of age", async () => {
+    const plan = await createPlan();
+    const article = await prisma.article.create({
+      data: { planId: plan.id, title: "承認待ちの記事", status: "accepted" },
+    });
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        draftId: "dummy-draft-id",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "pending_approval",
+        createdAt: old,
+        updatedAt: old,
+      },
+    });
+
+    await expect(selectArticleForPost(3)).rejects.toThrow(/宣伝可能な記事が見つかりませんでした/);
+  });
+
+  it("re-selects an article whose last successful post is older than the cooldown", async () => {
+    const plan = await createPlan();
+    const article = await prisma.article.create({
+      data: { planId: plan.id, title: "3日以上前に投稿済みの記事", status: "accepted" },
+    });
+    const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        draftId: "dummy-draft-id",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+        createdAt: fourDaysAgo,
+        updatedAt: fourDaysAgo,
+      },
+    });
+
+    const selected = await selectArticleForPost(3);
+    expect(selected.id).toBe(article.id);
+  });
+
+  it("does not re-select an article whose last successful post is within the cooldown", async () => {
+    const plan = await createPlan();
+    const article = await prisma.article.create({
+      data: { planId: plan.id, title: "昨日投稿済みの記事", status: "accepted" },
+    });
+    const yesterday = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        draftId: "dummy-draft-id",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+        createdAt: yesterday,
+        updatedAt: yesterday,
+      },
+    });
+
+    await expect(selectArticleForPost(3)).rejects.toThrow(/宣伝可能な記事が見つかりませんでした/);
+  });
+});
+
+describe("computePostingProbability", () => {
+  it("returns 0 once the daily target has been met", () => {
+    expect(computePostingProbability({ remainingTarget: 0, remainingActiveHours: 5, hourWeight: 1, averageWeight: 1 })).toBe(
+      0
+    );
+  });
+
+  it("returns 1 on the last active hour so the daily target is not missed", () => {
+    expect(
+      computePostingProbability({ remainingTarget: 3, remainingActiveHours: 1, hourWeight: 1, averageWeight: 1 })
+    ).toBe(1);
+  });
+
+  it("scales the base probability by how far above/below average the current hour's weight is", () => {
+    const base = computePostingProbability({
+      remainingTarget: 4,
+      remainingActiveHours: 8,
+      hourWeight: 1,
+      averageWeight: 1,
+    });
+    const boosted = computePostingProbability({
+      remainingTarget: 4,
+      remainingActiveHours: 8,
+      hourWeight: 2,
+      averageWeight: 1,
+    });
+    expect(boosted).toBeGreaterThan(base);
+  });
+
+  it("never exceeds 1", () => {
+    expect(
+      computePostingProbability({ remainingTarget: 10, remainingActiveHours: 2, hourWeight: 3, averageWeight: 1 })
+    ).toBe(1);
+  });
+});
+
+describe("countRemainingActiveHours", () => {
+  const config = { postingWindow: { startHour: 7, endHour: 24 } } as XPosterConfig;
+
+  it("counts the hours remaining until the window closes", () => {
+    const now = new Date("2026-01-01T14:00:00+09:00"); // JST 14:00
+    expect(countRemainingActiveHours(now, config)).toBe(10);
+  });
+
+  it("returns at least 1 even right at the window's end", () => {
+    const now = new Date("2026-01-01T23:00:00+09:00"); // JST 23:00
+    expect(countRemainingActiveHours(now, config)).toBe(1);
+  });
+});
+
+describe("isWithinPostingWindow", () => {
+  const config = { postingWindow: { startHour: 7, endHour: 24 } } as XPosterConfig;
+
+  it("is true inside the window", () => {
+    expect(isWithinPostingWindow(new Date("2026-01-01T14:00:00+09:00"), config)).toBe(true); // JST 14:00
+  });
+
+  it("is false before the window opens", () => {
+    expect(isWithinPostingWindow(new Date("2026-01-01T06:00:00+09:00"), config)).toBe(false); // JST 06:00
   });
 });

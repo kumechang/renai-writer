@@ -1,7 +1,10 @@
 name: X Post - Handle Approval
 
-# X投稿承認issueへの「承認」/「却下」コメントを検知し、承認ならXへ投稿する
-# (amazon-sentaku-shiageのhandle-approval.ymlを流用)。
+# X投稿承認issueへのコメントを検知する。「承認」「却下」ならその通り処理し、
+# それ以外の自由記述コメント(承認/投稿前のメモ、投稿後に見て気になった点の指摘など)は
+# 次回以降の生成に活かすフィードバックとして記録する
+# (amazon-sentaku-shiageのhandle-approval.ymlを流用しつつ、autoモードでの
+# 事後フィードバック収集に対応させたもの)。
 
 on:
   issue_comment:
@@ -21,11 +24,12 @@ env:
 jobs:
   handle-approval:
     runs-on: ubuntu-latest
-    # pending-x-post-approvalラベルが無いissueや、承認/却下と無関係なコメントには反応しない
-    # (記事issueでのコンソール駆動フローのやり取りと衝突しないためのガード)。
+    # pending-x-post-approvalラベルが無いissueには反応しない(記事issueでのコンソール駆動
+    # フローのやり取りと衝突しないためのガード)。botが自分で投稿した結果コメント
+    # (「投稿しました」「却下されました」など)への自己反応(無限ループ)も防ぐ。
     if: >
       contains(github.event.issue.labels.*.name, 'pending-x-post-approval') &&
-      (contains(github.event.comment.body, '承認') || contains(github.event.comment.body, '却下'))
+      github.event.comment.user.login != 'github-actions[bot]'
     steps:
       - uses: actions/checkout@v4
 

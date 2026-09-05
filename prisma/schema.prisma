@@ -210,8 +210,44 @@ model XPost {
   tweetUrl      String?
   failureReason String?
 
+  // 投稿後(承認前も含む)に運用者がissueへ残した「気になる」コメントの蓄積。
+  // 承認/却下の判定とは独立して、複数回の自由記述コメントを改行区切りで追記していく。
+  // 次回以降の投稿生成時に「避けるべき方向性」のヒントとして使う。
+  feedbackNotes String?
+  feedbackBy    String?
+  feedbackAt    DateTime?
+
+  metrics XPostMetric[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([articleId])
+}
+
+// 投稿ごとのエンゲージメントを「最新値で上書き」ではなくスナップショットとして時系列に蓄積する
+// (analyzePostingTimesが時間帯別の重み算出に使う。amazon-sentaku-shiageのpost_metricsを流用)。
+model XPostMetric {
+  id             String   @id @default(cuid())
+  xPostId        String
+  xPost          XPost    @relation(fields: [xPostId], references: [id], onDelete: Cascade)
+  collectedAt    DateTime @default(now())
+  impressions    Int?
+  likes          Int?
+  reposts        Int?
+  replies        Int?
+  bookmarks      Int?
+  engagementRate Float?
+
+  @@index([xPostId])
+}
+
+// 時間帯(JST 0-23時)ごとの投稿重み。analyzePostingTimesが定期的に更新する。
+// データ不足で未分析の時間帯はデフォルト1.0(均等)のまま残る
+// (amazon-sentaku-shiageのposting_time_weightsを流用)。
+model PostingTimeWeight {
+  hour      Int      @id
+  weight    Float    @default(1.0)
+  reason    String?
+  updatedAt DateTime @updatedAt
 }

@@ -18,6 +18,10 @@
 
 {{article_url_section}}
 
+# 直近の指摘(避けるべき方向性)
+
+{{feedback_hint}}
+
 # 投稿生成ルール
 
 ## 1. 基本姿勢

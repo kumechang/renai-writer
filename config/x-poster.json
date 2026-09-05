@@ -1,7 +1,15 @@
 {
-  "approvalMode": "manual",
+  "approvalMode": "auto",
   "claudeModel": "claude-sonnet-5",
   "xCharLimit": 280,
   "selfCheckPassThreshold": 75,
-  "maxGenerateRetries": 2
+  "maxGenerateRetries": 2,
+  "targetPostsPerDay": 8,
+  "postingWindow": {
+    "startHour": 7,
+    "endHour": 24
+  },
+  "minSpacingHours": 1,
+  "repromotionCooldownDays": 3,
+  "recentFeedbackWindow": 10
 }
