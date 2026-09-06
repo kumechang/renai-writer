@@ -22,6 +22,9 @@ export interface SelfCheckPostInput {
   generatedPost: string;
   articleTitle: string;
   articleContent: string;
+  // falseの場合(記事がまだ他媒体に公開されていない場合)、内容を具体的に明かして
+  // いないかを追加でチェックさせる。単発投稿(記事に紐づかない)の場合はtrueでよい。
+  published: boolean;
   charLimit: number;
   passThreshold: number;
 }
@@ -37,6 +40,10 @@ export async function selfCheckPost(
     article_title: input.articleTitle,
     article_excerpt: buildArticleExcerpt(input.articleContent),
     char_limit: String(input.charLimit),
+    disclosure_check_note: input.published
+      ? ""
+      : "- この記事はまだ他媒体で公開されていません。内容の具体的な詳細・結論・引用を" +
+        "明かしてしまっていないか(匂わせ程度に留まっているか)を厳しく確認してください。",
   });
 
   const result = await callClaudeJson(model, prompt, selfCheckSchema);

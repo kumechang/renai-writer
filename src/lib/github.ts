@@ -78,6 +78,25 @@ export async function fetchGithubIssue(
   return { title: data.title, body: data.body ?? "" };
 }
 
+export type GithubIssueState = "open" | "closed";
+
+// issueがopen/closedのどちらかを取得する。X投稿生成で、記事issueがまだオープン(=まだ
+// 他媒体に公開していない)か、クローズ済み(=公開済み、内容を自由に紹介してよい)かの
+// 判定に使う。
+export async function getIssueState(owner: string, repo: string, issueNumber: number): Promise<GithubIssueState> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`GitHub issue の状態取得に失敗しました: ${res.status} ${await res.text()}`);
+  }
+  const data = (await res.json()) as { state: string };
+  return data.state === "closed" ? "closed" : "open";
+}
+
 export interface PostedComment {
   id: number;
   createdAt: string;
