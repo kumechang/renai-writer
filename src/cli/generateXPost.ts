@@ -124,6 +124,12 @@ function printResult(result: Awaited<ReturnType<typeof generateXPost>>): void {
   console.log("---");
   console.log(result.finalText);
   console.log("---");
+  if (result.replyText) {
+    console.log("(記事URL付き返信ツイート)");
+    console.log("---");
+    console.log(result.replyText);
+    console.log("---");
+  }
   if (result.githubIssueUrl) {
     console.log(`承認issue: ${result.githubIssueUrl}`);
   } else {

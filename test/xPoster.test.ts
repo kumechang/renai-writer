@@ -1,7 +1,7 @@
 import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderPrompt } from "../src/xPoster/promptLoader";
 import { buildArticleExcerpt } from "../src/xPoster/generatePost";
 import { getWeightedLength } from "../src/xPoster/tweetLength";
@@ -14,6 +14,16 @@ import { computePostingProbability, countRemainingActiveHours } from "../src/xPo
 import { isWithinPostingWindow } from "../src/xPoster/postingWindow";
 import type { XPosterConfig } from "../src/xPoster/config";
 import { buildVarietyHint } from "../src/xPoster/varietyHint";
+import { hasReachedDailyUrlPostLimit, findUrlThreadCandidate } from "../src/xPoster/urlThreadCandidate";
+import * as articlePublication from "../src/xPoster/articlePublication";
+
+// findUrlThreadCandidateはGitHub API(記事issueの状態・最後のコメント)に依存するため、
+// その境界(articlePublication.ts)をモックしてDB側のロジックだけをテストする。
+vi.mock("../src/xPoster/articlePublication", () => ({
+  findOriginSession: vi.fn(),
+  isArticlePublished: vi.fn(),
+  findPublishedArticleUrl: vi.fn(),
+}));
 
 describe("renderPrompt", () => {
   it("replaces {{key}} placeholders with the given values", () => {
@@ -132,7 +142,10 @@ describe("buildIssueBody", () => {
     const body = buildIssueBody({
       articleTitle: "テスト記事",
       finalText: "冒頭の一文。続きは記事で。",
-      selfCheck,
+      score: selfCheck.score,
+      pass: selfCheck.pass,
+      problems: selfCheck.problems,
+      improvements: selfCheck.improvements,
       repoOwner: "kumechang",
       repoName: "renai-writer",
       sourceIssueNumber: 12,
@@ -148,7 +161,10 @@ describe("buildIssueBody", () => {
     const body = buildIssueBody({
       articleTitle: "テスト記事",
       finalText: "本文",
-      selfCheck: { ...selfCheck, score: 40, pass: false, problems: ["広告っぽい"] },
+      score: 40,
+      pass: false,
+      problems: ["広告っぽい"],
+      improvements: selfCheck.improvements,
       repoOwner: "kumechang",
       repoName: "renai-writer",
       sourceIssueNumber: 12,
@@ -161,7 +177,10 @@ describe("buildIssueBody", () => {
     const body = buildIssueBody({
       articleTitle: "テスト記事",
       finalText: "本文",
-      selfCheck,
+      score: selfCheck.score,
+      pass: selfCheck.pass,
+      problems: selfCheck.problems,
+      improvements: selfCheck.improvements,
       repoOwner: "kumechang",
       repoName: "renai-writer",
       sourceIssueNumber: null,
@@ -173,13 +192,36 @@ describe("buildIssueBody", () => {
     const body = buildIssueBody({
       articleTitle: null,
       finalText: "本文",
-      selfCheck,
+      score: selfCheck.score,
+      pass: selfCheck.pass,
+      problems: selfCheck.problems,
+      improvements: selfCheck.improvements,
       repoOwner: "kumechang",
       repoName: "renai-writer",
       sourceIssueNumber: null,
     });
     expect(body).toContain("単発投稿");
     expect(body).not.toContain("記事issue:");
+  });
+
+  it("renders both tweets when replyText (article-URL thread) is present", () => {
+    const body = buildIssueBody({
+      articleTitle: "テスト記事",
+      finalText: "導入文。その秘密は",
+      replyText: "核心部分の続き。\n\nhttps://example.com/articles/1",
+      score: selfCheck.score,
+      pass: selfCheck.pass,
+      problems: selfCheck.problems,
+      improvements: selfCheck.improvements,
+      repoOwner: "kumechang",
+      repoName: "renai-writer",
+      sourceIssueNumber: 12,
+    });
+    expect(body).toContain("投稿候補(1件目)");
+    expect(body).toContain("導入文。その秘密は");
+    expect(body).toContain("投稿候補(2件目・1件目への返信、記事URL付き)");
+    expect(body).toContain("核心部分の続き。");
+    expect(body).toContain("https://example.com/articles/1");
   });
 });
 
@@ -322,6 +364,199 @@ describe("selectArticleForPost", () => {
     });
 
     await expect(selectArticleForPost(3)).rejects.toThrow(/宣伝可能な記事が見つかりませんでした/);
+  });
+});
+
+describe("hasReachedDailyUrlPostLimit", () => {
+  beforeEach(async () => {
+    await prisma.xPost.deleteMany();
+    await prisma.article.deleteMany();
+    await prisma.plan.deleteMany();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("treats a non-positive daily limit as already reached", async () => {
+    expect(await hasReachedDailyUrlPostLimit(0)).toBe(true);
+  });
+
+  it("is not reached when there are no article-URL posts today", async () => {
+    expect(await hasReachedDailyUrlPostLimit(1)).toBe(false);
+  });
+
+  it("is reached once today's count meets the limit", async () => {
+    await prisma.xPost.create({
+      data: {
+        articleUrl: "https://example.com/articles/1",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+      },
+    });
+    expect(await hasReachedDailyUrlPostLimit(1)).toBe(true);
+  });
+
+  it("does not count article-URL posts from a previous day", async () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await prisma.xPost.create({
+      data: {
+        articleUrl: "https://example.com/articles/1",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+        createdAt: yesterday,
+      },
+    });
+    expect(await hasReachedDailyUrlPostLimit(1)).toBe(false);
+  });
+
+  it("ignores posts without an article URL", async () => {
+    await prisma.xPost.create({
+      data: { generatedText: "本文", finalText: "本文", status: "posted" },
+    });
+    expect(await hasReachedDailyUrlPostLimit(1)).toBe(false);
+  });
+
+  it("does not count rejected/failed article-URL posts toward the limit", async () => {
+    await prisma.xPost.create({
+      data: {
+        articleUrl: "https://example.com/articles/1",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "rejected",
+      },
+    });
+    expect(await hasReachedDailyUrlPostLimit(1)).toBe(false);
+  });
+});
+
+describe("findUrlThreadCandidate", () => {
+  beforeEach(async () => {
+    await prisma.xPost.deleteMany();
+    await prisma.draft.deleteMany();
+    await prisma.article.deleteMany();
+    await prisma.plan.deleteMany();
+    vi.mocked(articlePublication.findOriginSession).mockReset();
+    vi.mocked(articlePublication.isArticlePublished).mockReset();
+    vi.mocked(articlePublication.findPublishedArticleUrl).mockReset();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  async function createPlan() {
+    const candidates = Array.from({ length: 50 }, (_, i) => `候補${i + 1}`);
+    return prisma.plan.create({
+      data: {
+        theme: "テストテーマ",
+        targetReader: "テスト読者",
+        structure: "## 導入",
+        volume: "1000字",
+        paidSection: "後半を有料化",
+        titleCandidates: JSON.stringify(candidates),
+        recommendedTitles: JSON.stringify(candidates.slice(0, 10)),
+      },
+    });
+  }
+
+  async function createArticleWithDraft(status = "accepted") {
+    const plan = await createPlan();
+    const article = await prisma.article.create({
+      data: { planId: plan.id, title: "公開済みの記事", status },
+    });
+    await prisma.draft.create({
+      data: { articleId: article.id, revisionNumber: 0, title: "公開済みの記事", content: "本文", wordCount: 100 },
+    });
+    return article;
+  }
+
+  it("returns null when no article is published with a URL comment", async () => {
+    await createArticleWithDraft();
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue(null);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(false);
+
+    expect(await findUrlThreadCandidate(3)).toBeNull();
+  });
+
+  it("returns the article and its published URL when eligible", async () => {
+    const article = await createArticleWithDraft();
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+    vi.mocked(articlePublication.findPublishedArticleUrl).mockResolvedValue("https://example.com/articles/1");
+
+    const candidate = await findUrlThreadCandidate(3);
+    expect(candidate?.article.id).toBe(article.id);
+    expect(candidate?.articleUrl).toBe("https://example.com/articles/1");
+  });
+
+  it("skips a published article whose last comment has no URL", async () => {
+    await createArticleWithDraft();
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+    vi.mocked(articlePublication.findPublishedArticleUrl).mockResolvedValue(null);
+
+    expect(await findUrlThreadCandidate(3)).toBeNull();
+  });
+
+  it("does not re-select an article with an in-flight article-URL post", async () => {
+    const article = await createArticleWithDraft();
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        articleUrl: "https://example.com/articles/1",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "pending_approval",
+      },
+    });
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+    vi.mocked(articlePublication.findPublishedArticleUrl).mockResolvedValue("https://example.com/articles/1");
+
+    expect(await findUrlThreadCandidate(3)).toBeNull();
+  });
+
+  it("does not re-select an article whose last article-URL post is within the cooldown", async () => {
+    const article = await createArticleWithDraft();
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        articleUrl: "https://example.com/articles/1",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+      },
+    });
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+    vi.mocked(articlePublication.findPublishedArticleUrl).mockResolvedValue("https://example.com/articles/1");
+
+    expect(await findUrlThreadCandidate(3)).toBeNull();
+  });
+
+  it("re-selects an article whose last article-URL post is older than the cooldown", async () => {
+    const article = await createArticleWithDraft();
+    const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        articleUrl: "https://example.com/articles/1",
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+        createdAt: fourDaysAgo,
+        updatedAt: fourDaysAgo,
+      },
+    });
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+    vi.mocked(articlePublication.findPublishedArticleUrl).mockResolvedValue("https://example.com/articles/1");
+
+    const candidate = await findUrlThreadCandidate(3);
+    expect(candidate?.article.id).toBe(article.id);
   });
 });
 

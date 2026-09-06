@@ -1,12 +1,17 @@
 import { createIssue, type CreatedIssue } from "../lib/github";
-import type { SelfCheckResult } from "./selfCheckPost";
 import { PENDING_X_POST_APPROVAL_LABEL } from "./approval";
 
 export interface ApprovalIssueContent {
   // 記事に紐づかない単発投稿の場合はnull。
   articleTitle: string | null;
   finalText: string;
-  selfCheck: SelfCheckResult;
+  // 記事URL付きの2ツイート構成(スレッド)投稿の場合、2投稿目(核心+記事URL、
+  // 1投稿目への返信として投稿する)の本文。通常の1ツイート投稿ではnull/undefined。
+  replyText?: string | null;
+  score: number;
+  pass: boolean;
+  problems: string[];
+  improvements: string[];
   // 承認issueを作成するリポジトリ。
   repoOwner: string;
   repoName: string;
@@ -19,25 +24,37 @@ export interface ApprovalIssueContent {
 // 指摘事項・改善点・承認方法・元記事issueへのリンクをひとまとめにする
 // (amazon-sentaku-shiageのcreateApprovalIssue.tsを流用)。
 export function buildIssueBody(content: ApprovalIssueContent): string {
-  const { finalText, selfCheck } = content;
-  const problems = selfCheck.problems.length > 0 ? selfCheck.problems.map((p) => `- ${p}`).join("\n") : "(なし)";
+  const problems = content.problems.length > 0 ? content.problems.map((p) => `- ${p}`).join("\n") : "(なし)";
   const improvements =
-    selfCheck.improvements.length > 0 ? selfCheck.improvements.map((i) => `- ${i}`).join("\n") : "(なし)";
+    content.improvements.length > 0 ? content.improvements.map((i) => `- ${i}`).join("\n") : "(なし)";
   const sourceIssueLine =
     content.sourceIssueNumber != null
       ? `記事issue: ${content.repoOwner}/${content.repoName}#${content.sourceIssueNumber}`
       : null;
 
-  return [
+  const lines = [
     `## ${content.articleTitle ? `記事: ${content.articleTitle}` : "単発投稿(特定の記事に紐づきません)"}`,
     ...(sourceIssueLine ? [sourceIssueLine] : []),
     "",
-    "## 投稿候補",
+    content.replyText ? "## 投稿候補(1件目)" : "## 投稿候補",
     "```",
-    finalText,
+    content.finalText,
     "```",
+  ];
+
+  if (content.replyText) {
+    lines.push(
+      "",
+      "## 投稿候補(2件目・1件目への返信、記事URL付き)",
+      "```",
+      content.replyText,
+      "```"
+    );
+  }
+
+  lines.push(
     "",
-    `## スコア: ${selfCheck.score} / 100 (${selfCheck.pass ? "合格" : "不合格 → 自動修正済み"})`,
+    `## スコア: ${content.score} / 100 (${content.pass ? "合格" : "不合格 → 自動修正済み"})`,
     "",
     "## 指摘事項",
     problems,
@@ -47,8 +64,10 @@ export function buildIssueBody(content: ApprovalIssueContent): string {
     "",
     "---",
     "この投稿を承認する場合はコメントで「承認」、却下する場合は「却下」と入力してください。",
-    "却下する場合、「却下 もう少し落ち着いたトーンがいい」のように理由を続けて書くと記録されます。",
-  ].join("\n");
+    "却下する場合、「却下 もう少し落ち着いたトーンがいい」のように理由を続けて書くと記録されます。"
+  );
+
+  return lines.join("\n");
 }
 
 export async function createXPostApprovalIssue(content: ApprovalIssueContent): Promise<CreatedIssue> {

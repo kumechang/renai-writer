@@ -1,6 +1,6 @@
 import type { XPost } from "@prisma/client";
 import { prisma } from "../db/client";
-import { postTweet, TweetTooLongError } from "./postTweet";
+import { postTweet, postReply, TweetTooLongError } from "./postTweet";
 import { postIssueComment, closeIssue } from "../lib/github";
 import { describeXApiError } from "./xErrorMessage";
 import { loadXPosterConfig } from "./config";
@@ -9,6 +9,9 @@ import { loadXPosterConfig } from "./config";
 // 手動承認フロー(handleXPostApproval.ts)からも、autoモードの即時投稿(generate.ts)からも
 // 同じ関数を呼ぶことで、承認方法が違っても投稿後の扱いが一貫するようにする
 // (amazon-sentaku-shiageのfinalizeApprovedPost.tsと同じ考え方)。
+//
+// post.replyText が設定されている場合(記事URL付きの2ツイート構成スレッド)は、
+// 1件目(finalText)を投稿した後、続けて2件目(replyText、記事URL付き)をその返信として投稿する。
 export async function finalizeXPost(post: XPost): Promise<void> {
   const config = loadXPosterConfig();
   const issueRef =
@@ -16,42 +19,76 @@ export async function finalizeXPost(post: XPost): Promise<void> {
       ? { owner: post.githubIssueOwner, repo: post.githubIssueRepo, number: post.githubIssueNumber }
       : null;
 
+  let mainResult;
   try {
-    const result = await postTweet(post.finalText, config.xCharLimit);
-
-    if (result.dryRun) {
-      await prisma.xPost.update({ where: { id: post.id }, data: { status: "posted_dryrun" } });
-      if (issueRef) {
-        await postIssueComment(
-          issueRef.owner,
-          issueRef.repo,
-          issueRef.number,
-          "ドライラン: X APIキー未設定のため実際の投稿は行っていません(DB上はposted_dryrunとして記録)。"
-        );
-        await closeIssue(issueRef.owner, issueRef.repo, issueRef.number);
-      }
-      return;
-    }
-
-    await prisma.xPost.update({
-      where: { id: post.id },
-      data: { status: "posted", tweetId: result.tweetId, tweetUrl: result.tweetUrl },
-    });
-    if (issueRef) {
-      await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, `投稿しました: ${result.tweetUrl}`);
-      await closeIssue(issueRef.owner, issueRef.repo, issueRef.number);
-    }
+    mainResult = await postTweet(post.finalText, config.xCharLimit);
   } catch (error) {
     const message =
       error instanceof TweetTooLongError
         ? `文字数超過のため投稿できませんでした: ${error.message}`
         : describeXApiError(error);
-    await prisma.xPost.update({
-      where: { id: post.id },
-      data: { status: "post_failed", failureReason: message },
-    });
+    await prisma.xPost.update({ where: { id: post.id }, data: { status: "post_failed", failureReason: message } });
     if (issueRef) {
       await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, `投稿に失敗しました: ${message}`);
+    }
+    throw error;
+  }
+
+  if (mainResult.dryRun) {
+    await prisma.xPost.update({ where: { id: post.id }, data: { status: "posted_dryrun" } });
+    if (issueRef) {
+      await postIssueComment(
+        issueRef.owner,
+        issueRef.repo,
+        issueRef.number,
+        "ドライラン: X APIキー未設定のため実際の投稿は行っていません(DB上はposted_dryrunとして記録)。"
+      );
+      await closeIssue(issueRef.owner, issueRef.repo, issueRef.number);
+    }
+    return;
+  }
+
+  if (!post.replyText) {
+    await prisma.xPost.update({
+      where: { id: post.id },
+      data: { status: "posted", tweetId: mainResult.tweetId, tweetUrl: mainResult.tweetUrl },
+    });
+    if (issueRef) {
+      await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, `投稿しました: ${mainResult.tweetUrl}`);
+      await closeIssue(issueRef.owner, issueRef.repo, issueRef.number);
+    }
+    return;
+  }
+
+  // 記事URL付きスレッド: 1件目は投稿済み。続けて2件目(核心+記事URL)を返信として投稿する。
+  try {
+    const replyResult = await postReply(post.replyText, mainResult.tweetId, config.xCharLimit);
+    await prisma.xPost.update({
+      where: { id: post.id },
+      data: {
+        status: replyResult.dryRun ? "posted_dryrun" : "posted",
+        tweetId: mainResult.tweetId,
+        tweetUrl: mainResult.tweetUrl,
+        replyTweetId: replyResult.dryRun ? null : replyResult.tweetId,
+        replyTweetUrl: replyResult.dryRun ? null : replyResult.tweetUrl,
+      },
+    });
+    if (issueRef) {
+      const message = replyResult.dryRun
+        ? "ドライラン: X APIキー未設定のため実際の投稿は行っていません(DB上はposted_dryrunとして記録)。"
+        : `投稿しました: ${mainResult.tweetUrl}\n返信(記事URL付き): ${replyResult.tweetUrl}`;
+      await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, message);
+      await closeIssue(issueRef.owner, issueRef.repo, issueRef.number);
+    }
+  } catch (error) {
+    // 1件目は既に投稿済みで取り消せないため、運用者が状況を把握できるよう記録して知らせる。
+    const message = `1件目は投稿できましたが、記事URL付きの返信投稿に失敗しました: ${describeXApiError(error)} (1件目: ${mainResult.tweetUrl})`;
+    await prisma.xPost.update({
+      where: { id: post.id },
+      data: { status: "post_failed", tweetId: mainResult.tweetId, tweetUrl: mainResult.tweetUrl, failureReason: message },
+    });
+    if (issueRef) {
+      await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, message);
     }
     throw error;
   }

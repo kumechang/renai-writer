@@ -211,6 +211,13 @@ model XPost {
   tweetUrl      String?
   failureReason String?
 
+  // 記事URL付きの2ツイート構成(スレッド)投稿の場合、2投稿目(核心+記事URL、
+  // 1投稿目への返信として投稿する)の最終本文とその投稿結果。articleUrlが
+  // 設定されている投稿でのみ使う。
+  replyText     String?
+  replyTweetId  String?
+  replyTweetUrl String?
+
   // 投稿後(承認前も含む)に運用者がissueへ残した「気になる」コメントの蓄積。
   // 承認/却下の判定とは独立して、複数回の自由記述コメントを改行区切りで追記していく。
   // 次回以降の投稿生成時に「避けるべき方向性」のヒントとして使う。
