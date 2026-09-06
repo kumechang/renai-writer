@@ -5,9 +5,12 @@ export interface ApprovalIssueContent {
   // 記事に紐づかない単発投稿の場合はnull。
   articleTitle: string | null;
   finalText: string;
-  // 記事URL付きの2ツイート構成(スレッド)投稿の場合、2投稿目(核心+記事URL、
-  // 1投稿目への返信として投稿する)の本文。通常の1ツイート投稿ではnull/undefined。
+  // 2ツイート構成(スレッド)投稿の場合、2投稿目(1投稿目への返信として投稿する)の本文。
+  // 通常の1ツイート投稿ではnull/undefined。
   replyText?: string | null;
+  // replyTextに記事URLが含まれる(記事URL付きスレッド)場合のみtrue。単発投稿の
+  // 2ツイート構成(記事に紐づかない)の場合はfalse/undefinedになる。
+  replyIncludesUrl?: boolean;
   score: number;
   pass: boolean;
   problems: string[];
@@ -43,13 +46,10 @@ export function buildIssueBody(content: ApprovalIssueContent): string {
   ];
 
   if (content.replyText) {
-    lines.push(
-      "",
-      "## 投稿候補(2件目・1件目への返信、記事URL付き)",
-      "```",
-      content.replyText,
-      "```"
-    );
+    const replyHeading = content.replyIncludesUrl
+      ? "## 投稿候補(2件目・1件目への返信、記事URL付き)"
+      : "## 投稿候補(2件目・1件目への返信)";
+    lines.push("", replyHeading, "```", content.replyText, "```");
   }
 
   lines.push(

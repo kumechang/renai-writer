@@ -6,6 +6,7 @@ import { generateStandalonePost } from "./generateStandalonePost";
 import { generateUrlThreadPost } from "./generateUrlThreadPost";
 import { selfCheckPost, type SelfCheckResult } from "./selfCheckPost";
 import { selfCheckUrlThreadPost } from "./selfCheckUrlThreadPost";
+import { selfCheckStandalonePost } from "./selfCheckStandalonePost";
 import { getWeightedLength } from "./tweetLength";
 import { shortenPost } from "./shortenPost";
 import { createXPostApprovalIssue } from "./approvalIssue";
@@ -19,9 +20,6 @@ import { hasReachedDailyUrlPostLimit, findUrlThreadCandidate } from "./urlThread
 // 解消しない場合の最終手段として、専用の短縮パスを最大この回数まで試す
 // (amazon-sentaku-shiageのgenerateCandidate.tsのMAX_SHORTEN_ATTEMPTSと同じ)。
 const MAX_SHORTEN_ATTEMPTS = 3;
-
-// 単発投稿(記事に紐づかない投稿)のセルフチェックでは、記事本文の代わりにこの説明文を渡す。
-const STANDALONE_SUBJECT_LABEL = "(単発投稿・特定の記事に紐づかない一般的な恋愛系の投稿)";
 
 // 宣伝可能な記事が無い場合、selectArticleForPostが投げるエラーメッセージの一部
 // (これに一致する場合のみ単発投稿へフォールバックする)。
@@ -82,7 +80,9 @@ interface PersistAndDispatchInput {
 //
 // ただし記事を明示指定していない自動選択の場合、まず記事URL付きの2ツイート構成スレッド
 // (公開済み記事のissueに貼られたURLを使う投稿)を1日urlPostsPerDay件まで優先的に試す。
-// 対象が見つからなければ通常のフローにフォールバックする。
+// 対象が見つからなければ通常のフローにフォールバックする。単発投稿(記事に紐づかない投稿)は
+// 自分でコメント(返信)を付けた投稿の方がインプレッションが伸びる傾向が見られたため、
+// 常に「問題提起→回答」の2ツイート構成スレッドで作る(tryGenerateStandaloneThreadPost)。
 export async function generateXPost(options: GenerateXPostOptions = {}): Promise<GenerateXPostResult> {
   const config = loadXPosterConfig();
 
@@ -100,36 +100,34 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
 
   const target = await resolveTarget(options, config);
 
+  if (target.kind === "standalone") {
+    return generateStandaloneThreadPost(config, repo);
+  }
+
   // 記事issueがオープン(=まだ他媒体に公開していない)かクローズ済み(=公開済み)かで
   // 生成方針を変える(「記事issueがオープンのうちは内容を匂わせる程度にしてほしい」
   // という運用要望に対応)。元issueが分からない・状態取得に失敗した場合は、内容を
-  // 漏らさない安全側(未公開扱い)に倒す。単発投稿には関係ないためtrue扱いでよい。
-  const originSession = target.kind === "article" ? await findOriginSession(target.article.id) : null;
-  const published = target.kind === "article" ? await isArticlePublished(originSession) : true;
+  // 漏らさない安全側(未公開扱い)に倒す。
+  const originSession = await findOriginSession(target.article.id);
+  const published = await isArticlePublished(originSession);
 
   const generate = (): Promise<string> =>
-    target.kind === "article"
-      ? generatePost(config.claudeModel, {
-          articleId: target.article.id,
-          articleTitle: target.article.title,
-          articleContent: target.draft.content,
-          articleUrl: options.articleUrl,
-          published,
-          charLimit: config.xCharLimit,
-          recentFeedbackWindow: config.recentFeedbackWindow,
-          recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
-        })
-      : generateStandalonePost(config.claudeModel, {
-          charLimit: config.xCharLimit,
-          recentFeedbackWindow: config.recentFeedbackWindow,
-          recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
-        });
+    generatePost(config.claudeModel, {
+      articleId: target.article.id,
+      articleTitle: target.article.title,
+      articleContent: target.draft.content,
+      articleUrl: options.articleUrl,
+      published,
+      charLimit: config.xCharLimit,
+      recentFeedbackWindow: config.recentFeedbackWindow,
+      recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+    });
 
   const runSelfCheckFor = (generatedText: string): Promise<{ raw: string; data: SelfCheckResult }> =>
     selfCheckPost(config.claudeModel, {
       generatedPost: generatedText,
-      articleTitle: target.kind === "article" ? target.article.title : STANDALONE_SUBJECT_LABEL,
-      articleContent: target.kind === "article" ? target.draft.content : "",
+      articleTitle: target.article.title,
+      articleContent: target.draft.content,
       published,
       charLimit: config.xCharLimit,
       passThreshold: config.selfCheckPassThreshold,
@@ -170,14 +168,10 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
     );
   }
 
-  const articleId = target.kind === "article" ? target.article.id : null;
-  const articleTitle = target.kind === "article" ? target.article.title : null;
-  const draftId = target.kind === "article" ? target.draft.id : null;
-
   return persistAndDispatch({
-    articleId,
-    articleTitle,
-    draftId,
+    articleId: target.article.id,
+    articleTitle: target.article.title,
+    draftId: target.draft.id,
     articleUrl: options.articleUrl ?? null,
     generatedText,
     finalText,
@@ -186,6 +180,78 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
     selfCheckData: selfCheck.data,
     repo,
     sourceIssueNumber: originSession?.issueNumber ?? null,
+    approvalMode: config.approvalMode,
+  });
+}
+
+// 記事に紐づかない単発投稿を、hook(問題提起・あるある)→payoff(回答、1件目への返信)の
+// 2ツイート構成スレッドで作る。自分でコメント(返信)を付けた投稿の方がインプレッションが
+// 伸びる傾向が見られたため、記事URL付きスレッドと同じ構成を単発投稿にも採用している。
+async function generateStandaloneThreadPost(config: XPosterConfig, repo: Repo): Promise<GenerateXPostResult> {
+  const generate = () =>
+    generateStandalonePost(config.claudeModel, {
+      charLimit: config.xCharLimit,
+      recentFeedbackWindow: config.recentFeedbackWindow,
+      recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+    });
+
+  const runSelfCheckFor = (hook: string, payoff: string) =>
+    selfCheckStandalonePost(config.claudeModel, {
+      hook,
+      payoff,
+      charLimit: config.xCharLimit,
+      passThreshold: config.selfCheckPassThreshold,
+    });
+
+  let generated = await generate();
+  let selfCheck = await runSelfCheckFor(generated.hook, generated.payoff);
+  let finalHook = selfCheck.data.final_hook;
+  let finalPayoff = selfCheck.data.final_payoff;
+  let hookLength = getWeightedLength(finalHook);
+  let payoffLength = getWeightedLength(finalPayoff);
+
+  for (
+    let attempt = 1;
+    (hookLength > config.xCharLimit || payoffLength > config.xCharLimit) && attempt <= config.maxGenerateRetries;
+    attempt++
+  ) {
+    generated = await generate();
+    selfCheck = await runSelfCheckFor(generated.hook, generated.payoff);
+    finalHook = selfCheck.data.final_hook;
+    finalPayoff = selfCheck.data.final_payoff;
+    hookLength = getWeightedLength(finalHook);
+    payoffLength = getWeightedLength(finalPayoff);
+  }
+
+  // hookとpayoffは別ツイートなので、文字数超過の短縮もそれぞれ独立に行う。
+  for (let attempt = 1; hookLength > config.xCharLimit && attempt <= MAX_SHORTEN_ATTEMPTS; attempt++) {
+    finalHook = await shortenPost(config.claudeModel, finalHook, config.xCharLimit, attempt);
+    hookLength = getWeightedLength(finalHook);
+  }
+
+  for (let attempt = 1; payoffLength > config.xCharLimit && attempt <= MAX_SHORTEN_ATTEMPTS; attempt++) {
+    finalPayoff = await shortenPost(config.claudeModel, finalPayoff, config.xCharLimit, attempt);
+    payoffLength = getWeightedLength(finalPayoff);
+  }
+
+  if (hookLength > config.xCharLimit || payoffLength > config.xCharLimit) {
+    throw new Error(
+      `単発投稿が文字数上限を超過したままです(規定回数のやり直し・短縮後も解消せず): hook=${hookLength}, payoff=${payoffLength} > ${config.xCharLimit}`
+    );
+  }
+
+  return persistAndDispatch({
+    articleId: null,
+    articleTitle: null,
+    draftId: null,
+    articleUrl: null,
+    generatedText: `${generated.hook}\n---\n${generated.payoff}`,
+    finalText: finalHook,
+    replyText: finalPayoff,
+    selfCheckJson: JSON.stringify(selfCheck.data),
+    selfCheckData: selfCheck.data,
+    repo,
+    sourceIssueNumber: null,
     approvalMode: config.approvalMode,
   });
 }
@@ -324,6 +390,7 @@ async function persistAndDispatch(input: PersistAndDispatchInput): Promise<Gener
     articleTitle: input.articleTitle,
     finalText: input.finalText,
     replyText: input.replyText,
+    replyIncludesUrl: input.replyText != null && input.articleUrl != null,
     score: input.selfCheckData.score,
     pass: input.selfCheckData.pass,
     problems: input.selfCheckData.problems,

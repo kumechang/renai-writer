@@ -209,6 +209,7 @@ describe("buildIssueBody", () => {
       articleTitle: "テスト記事",
       finalText: "導入文。その秘密は",
       replyText: "核心部分の続き。\n\nhttps://example.com/articles/1",
+      replyIncludesUrl: true,
       score: selfCheck.score,
       pass: selfCheck.pass,
       problems: selfCheck.problems,
@@ -222,6 +223,24 @@ describe("buildIssueBody", () => {
     expect(body).toContain("投稿候補(2件目・1件目への返信、記事URL付き)");
     expect(body).toContain("核心部分の続き。");
     expect(body).toContain("https://example.com/articles/1");
+  });
+
+  it("renders both tweets without the URL label when replyIncludesUrl is not set (standalone thread)", () => {
+    const body = buildIssueBody({
+      articleTitle: null,
+      finalText: "問題提起の一文。そんなとき、",
+      replyText: "答えにあたる一文。",
+      score: selfCheck.score,
+      pass: selfCheck.pass,
+      problems: selfCheck.problems,
+      improvements: selfCheck.improvements,
+      repoOwner: "kumechang",
+      repoName: "renai-writer",
+      sourceIssueNumber: null,
+    });
+    expect(body).toContain("投稿候補(1件目)");
+    expect(body).toContain("投稿候補(2件目・1件目への返信)");
+    expect(body).not.toContain("記事URL付き");
   });
 });
 
