@@ -164,6 +164,20 @@ export async function listIssueComments(
   return data.map((c) => ({ id: c.id, body: c.body ?? "", createdAt: c.created_at }));
 }
 
+const URL_PATTERN = /https?:\/\/\S+/;
+
+// 記事issueの最後のコメントからURLを抜き出す。運用者が「記事を公開したら最後のコメントに
+// URLを貼る」運用をしている前提(X投稿生成が、公開済み記事のURLをここから拾う)。
+// 直近100件のコメントまでしか見ないため、それより古いコメントにしかURLが無い場合は
+// 拾えない(通常の運用では起こらない想定)。
+export async function getLastCommentUrl(owner: string, repo: string, issueNumber: number): Promise<string | null> {
+  const comments = await listIssueComments(owner, repo, issueNumber);
+  if (comments.length === 0) return null;
+  const lastComment = comments[comments.length - 1];
+  const match = lastComment.body.match(URL_PATTERN);
+  return match ? match[0] : null;
+}
+
 function requireGithubToken(): string {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
