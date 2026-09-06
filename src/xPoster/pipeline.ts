@@ -1,4 +1,4 @@
-import type { Article, Draft } from "@prisma/client";
+import type { Article, Draft, IssueSession } from "@prisma/client";
 import { prisma } from "../db/client";
 import { loadXPosterConfig, type XPosterConfig } from "./config";
 import { generatePost } from "./generatePost";
@@ -10,6 +10,7 @@ import { createXPostApprovalIssue } from "./approvalIssue";
 import { finalizeXPost } from "./finalizePost";
 import { parseGithubRepository } from "./env";
 import { selectArticleForPost, PROMOTABLE_ARTICLE_STATUSES } from "./selectArticle";
+import { getIssueState } from "../lib/github";
 
 // 生成+セルフチェックのやり直し(config.maxGenerateRetries)でも文字数超過が
 // 解消しない場合の最終手段として、専用の短縮パスを最大この回数まで試す
@@ -59,6 +60,13 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
     );
   }
 
+  // 記事issueがオープン(=まだ他媒体に公開していない)かクローズ済み(=公開済み)かで
+  // 生成方針を変える(「記事issueがオープンのうちは内容を匂わせる程度にしてほしい」
+  // という運用要望に対応)。元issueが分からない・状態取得に失敗した場合は、内容を
+  // 漏らさない安全側(未公開扱い)に倒す。単発投稿には関係ないためtrue扱いでよい。
+  const originSession = target.kind === "article" ? await findOriginSession(target.article.id) : null;
+  const published = target.kind === "article" ? await isArticlePublished(originSession) : true;
+
   const generate = (): Promise<string> =>
     target.kind === "article"
       ? generatePost(config.claudeModel, {
@@ -66,6 +74,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
           articleTitle: target.article.title,
           articleContent: target.draft.content,
           articleUrl: options.articleUrl,
+          published,
           charLimit: config.xCharLimit,
           recentFeedbackWindow: config.recentFeedbackWindow,
           recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
@@ -81,6 +90,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
       generatedPost: generatedText,
       articleTitle: target.kind === "article" ? target.article.title : STANDALONE_SUBJECT_LABEL,
       articleContent: target.kind === "article" ? target.draft.content : "",
+      published,
       charLimit: config.xCharLimit,
       passThreshold: config.selfCheckPassThreshold,
     });
@@ -150,8 +160,6 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
       githubIssueUrl: null,
     };
   }
-
-  const originSession = articleId ? await prisma.issueSession.findFirst({ where: { articleId } }) : null;
 
   const issue = await createXPostApprovalIssue({
     articleTitle,
@@ -241,4 +249,21 @@ async function requireDraft(articleId: string): Promise<Draft> {
   });
   if (!draft) throw new Error(`記事にまだ原稿がありません(articleId=${articleId})`);
   return draft;
+}
+
+async function findOriginSession(articleId: string): Promise<IssueSession | null> {
+  return prisma.issueSession.findFirst({ where: { articleId } });
+}
+
+// 記事issueがクローズ済み(=運用者が他媒体への公開を確認して手動でクローズしたもの)かどうか。
+// 元issueが分からない、またはGitHub APIでの状態取得に失敗した場合は、内容を漏らさない
+// 安全側(未公開)に倒す。
+async function isArticlePublished(originSession: IssueSession | null): Promise<boolean> {
+  if (!originSession) return false;
+  try {
+    const state = await getIssueState(originSession.issueOwner, originSession.issueRepo, originSession.issueNumber);
+    return state === "closed";
+  } catch {
+    return false;
+  }
 }

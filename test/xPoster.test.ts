@@ -41,6 +41,13 @@ describe("buildArticleExcerpt", () => {
   it("uses the full content when there is no paid section marker and it is short", () => {
     expect(buildArticleExcerpt("短い本文")).toBe("短い本文");
   });
+
+  it("honors a shorter maxLength for teaser-style excerpts of unpublished articles", () => {
+    const content = "あ".repeat(500);
+    const excerpt = buildArticleExcerpt(content, 300);
+    expect(excerpt.length).toBe(301);
+    expect(excerpt.endsWith("…")).toBe(true);
+  });
 });
 
 describe("getWeightedLength", () => {
