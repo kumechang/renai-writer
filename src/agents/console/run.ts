@@ -217,6 +217,58 @@ export async function checkIssue(issueRef: IssueRef, apiBaseUrl: string): Promis
   }
 }
 
+// GitHub Actions側のconsole-check.yml等は同じconcurrencyグループ(console-state)を
+// bot.dbへの書き込み競合を避けるために共有しており、直列化のためコメント投稿ごとに
+// キューイングされる。ここでイベントが密集すると、GitHub Actionsの仕様上「pendingの
+// まま次のイベントに追い越された実行」はステップを一つも実行せずキャンセルされる。
+// つまり、あるissueへの返信をトリガーに起動したはずのcheckが、そのissueの分を
+// 一度も処理しないまま消えてしまうことがある(実例: issue #6/#7/#9)。
+//
+// この取りこぼしを自己修復するため、checkは常に「自分をトリガーしたissue」だけでなく
+// 保留中の全issueをまとめて処理する。取りこぼしが起きても、次にどのissueであれ
+// checkが実際に実行されたタイミングで、そのissueの未処理分も一緒に拾われる。
+export async function checkAllPendingIssues(
+  apiBaseUrl: string,
+  triggeringIssueRef?: IssueRef
+): Promise<string> {
+  const sessions = await prisma.issueSession.findMany({
+    where: { pendingStep: { not: null } },
+    orderBy: { updatedAt: "asc" },
+  });
+
+  const refs: IssueRef[] = sessions.map((s) => ({
+    owner: s.issueOwner,
+    repo: s.issueRepo,
+    number: s.issueNumber,
+  }));
+
+  // トリガーとなったissueがあれば先頭に持ってくる(結果メッセージの読みやすさのため)。
+  if (triggeringIssueRef) {
+    const idx = refs.findIndex(
+      (r) =>
+        r.owner === triggeringIssueRef.owner &&
+        r.repo === triggeringIssueRef.repo &&
+        r.number === triggeringIssueRef.number
+    );
+    if (idx > 0) refs.unshift(refs.splice(idx, 1)[0]);
+  }
+
+  if (refs.length === 0) {
+    return "保留中のプロンプトがあるissueはありません。";
+  }
+
+  const results: string[] = [];
+  for (const ref of refs) {
+    try {
+      const message = await checkIssue(ref, apiBaseUrl);
+      results.push(`[${issueRefLabel(ref)}] ${message}`);
+    } catch (err) {
+      results.push(`[${issueRefLabel(ref)}] エラー: ${(err as Error).message}`);
+    }
+  }
+  return results.join("\n");
+}
+
 async function handleResearchReply(
   issueRef: IssueRef,
   session: IssueSession,

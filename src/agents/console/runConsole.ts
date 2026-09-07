@@ -5,7 +5,7 @@ try {
   // .env が無い場合はそのまま既存の環境変数を使う
 }
 
-import { checkIssue, startPlan, startResearch, type IssueRef } from "./run";
+import { checkAllPendingIssues, startPlan, startResearch, type IssueRef } from "./run";
 
 function parseIssueRef(issue: string): IssueRef {
   const match = issue.match(/^([^/]+)\/([^#]+)#(\d+)$/);
@@ -57,7 +57,9 @@ async function main() {
       break;
     }
     case "check":
-      message = await checkIssue(issueRef, apiBaseUrl);
+      // 自分をトリガーしたissueだけでなく、保留中の全issueをまとめて処理する
+      // (GitHub Actions側のconcurrencyキューで実行が取りこぼされた場合の自己修復のため)。
+      message = await checkAllPendingIssues(apiBaseUrl, issueRef);
       break;
     default:
       throw new Error(USAGE);
