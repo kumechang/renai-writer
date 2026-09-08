@@ -1,19 +1,19 @@
 {
   "searchQueries": [
+    "恋愛垢 lang:ja -is:retweet -is:reply",
+    "婚活垢 lang:ja -is:retweet -is:reply",
     "恋愛エッセイ lang:ja -is:retweet -is:reply",
     "婚活ブログ更新 lang:ja -is:retweet -is:reply",
-    "元カレを忘れられない私へ lang:ja -is:retweet -is:reply",
-    "恋愛の悩み 発信 lang:ja -is:retweet -is:reply",
-    "失恋 立ち直る lang:ja -is:retweet -is:reply",
-    "婚活 体験談 lang:ja -is:retweet -is:reply",
-    "アラサー 恋愛 コラム lang:ja -is:retweet -is:reply",
-    "パートナーシップ心理学 lang:ja -is:retweet -is:reply",
-    "恋愛が続かない lang:ja -is:retweet -is:reply",
     "婚活 うまくいかない lang:ja -is:retweet -is:reply",
-    "恋愛心理士 lang:ja -is:retweet -is:reply",
-    "元恋人 引きずる lang:ja -is:retweet -is:reply"
+    "元カレを忘れられない私へ lang:ja -is:retweet -is:reply",
+    "元カノを忘れられない私へ lang:ja -is:retweet -is:reply",
+    "パートナーシップ心理学 lang:ja -is:retweet -is:reply",
+    "失恋から立ち直る方法 lang:ja -is:retweet -is:reply",
+    "アラサー女子 恋愛 lang:ja -is:retweet -is:reply",
+    "恋愛系インフルエンサー lang:ja -is:retweet -is:reply",
+    "婚活 涙 lang:ja -is:retweet -is:reply"
   ],
-  "minFollowers": 10000,
+  "minFollowers": 3000,
   "maxFollowers": 500000,
-  "maxCandidates": 15
+  "maxCandidates": 20
 }
