@@ -259,3 +259,80 @@ model PostingTimeWeight {
   reason    String?
   updatedAt DateTime @updatedAt
 }
+
+// エンゲージメント施策(「フォロワー1万人以上の憧れのアカウント」をフォロー・通知オンし、
+// 投稿直後に心のこもったリプライを返す)でウォッチする対象アカウント。
+// config/x-watch-accounts.jsonで運用者が5〜10件程度登録する想定。
+model WatchedAccount {
+  id       String  @id @default(cuid())
+  username String  @unique
+  // なぜこのアカウントをウォッチしているか(運用メモ)
+  note     String?
+  // usernameからXのuser idを解決するAPI呼び出しを毎回避けるためのキャッシュ
+  xUserId  String?
+  active   Boolean @default(true)
+  posts    WatchedPost[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ウォッチ対象アカウントの投稿。新着を検知するたびに1件作り、リプライ生成の対象にする。
+model WatchedPost {
+  id               String         @id @default(cuid())
+  watchedAccountId String
+  watchedAccount   WatchedAccount @relation(fields: [watchedAccountId], references: [id], onDelete: Cascade)
+
+  tweetId  String   @unique
+  text     String
+  postedAt DateTime
+
+  // new: 未対応 / processing: リプライ生成中〜承認待ち(EngagementReply参照) /
+  // replied: リプライ投稿済み / skipped: 対象外(投稿から時間が経ちすぎたなど)
+  status String @default("new")
+
+  reply EngagementReply?
+
+  createdAt DateTime @default(now())
+
+  @@index([watchedAccountId])
+}
+
+// ウォッチ対象の投稿に対して生成した「心のこもった(かつ有益な)」リプライ。
+// XPostと同じくGitHub issueでの人による承認を経てXに投稿する
+// (承認フロー・自動投稿の仕組みはsrc/xPosterのものを踏襲している)。
+model EngagementReply {
+  id            String      @id @default(cuid())
+  watchedPostId String      @unique
+  watchedPost   WatchedPost @relation(fields: [watchedPostId], references: [id], onDelete: Cascade)
+
+  generatedText String
+  // セルフチェック後の最終リプライ文(不合格なら修正済み)。実際にXへ投稿されるのはこちら。
+  finalText     String
+  selfCheckJson String?
+
+  // pending_approval -> approved / rejected -> posted / posted_dryrun / post_failed
+  status String @default("pending_approval")
+
+  githubIssueOwner  String?
+  githubIssueRepo   String?
+  githubIssueNumber Int?
+  githubIssueUrl    String?
+
+  approvedBy      String?
+  rejectedBy      String?
+  rejectionReason String?
+
+  tweetId       String?
+  tweetUrl      String?
+  failureReason String?
+
+  // 投稿後(承認前も含む)に運用者がissueへ残した「気になる」コメントの蓄積。
+  // 次回以降のリプライ生成時に「避けるべき方向性」のヒントとして使う。
+  feedbackNotes String?
+  feedbackBy    String?
+  feedbackAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

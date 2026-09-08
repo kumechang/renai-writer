@@ -1,0 +1,60 @@
+name: X Engagement - Collect
+
+# config/x-watch-accounts.jsonに登録したウォッチ対象アカウント(「フォロワー1万人以上の
+# 憧れのアカウント」5〜10件)の新着投稿をX APIから取得し、WatchedPostとして保存する。
+# 「彼らが投稿した瞬間に」リプライを返すというアドバイスの狙いに沿うよう、検知自体は
+# 高頻度(15分おき)で行う。実際のリプライ生成・投稿はx-engagement-generate.ymlが
+# 別ワークフローとして1日の上限に沿ったペースで行う。
+#
+# GitHub Actionsのscheduleは数時間〜1日単位で遅延・スキップされることがあり
+# (x-post-generate.ymlで確認済み)、15分おきのような高頻度実行では特に顕著になりうる。
+# 確実性を優先する場合は、外部のcronサービス(cron-job.orgなど)からworkflow_dispatch APIを
+# 15分おきに叩く方式を主経路にすること。native scheduleは保険として残す。
+
+on:
+  schedule:
+    # 15分おき。0分ちょうどは混雑回避のため3分ずらす(保険。上記の通り遅延・スキップされうる)。
+    - cron: "3,18,33,48 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: console-state
+  cancel-in-progress: false
+
+env:
+  DATABASE_URL: file:./bot.db
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Collect new posts from watched accounts
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: npm run x-engagement:collect
+
+      - name: Persist bot database
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prisma/bot.db
+          git diff --cached --quiet || git commit -m "chore(bot): update state after x-engagement collect [skip ci]"
+          git pull --rebase --autostash
+          git push
