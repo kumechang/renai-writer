@@ -1,71 +1,66 @@
-import type { WatchedAccount } from "@prisma/client";
 import { prisma } from "../db/client";
 import { getXClient } from "../xPoster/xClient";
 import { hasXCredentials } from "../xPoster/env";
 import { syncWatchedAccounts } from "./syncWatchedAccounts";
-import { loadXEngagementConfig } from "./config";
-import { shouldCheckAccountNow } from "./postingTimeProfile";
 
-// 1アカウントあたり取得する最新投稿件数(X APIの最小値。既にtweetIdを保存済みのものは
-// insertでスキップされるため、多めに取る必要はない)。
-const TIMELINE_MAX_RESULTS = 5;
+// 直近検索で1回に取得する最大件数(X APIの上限)。ウォッチ対象全アカウント分の投稿を
+// まとめて取得するため、余裕を持って上限いっぱいにしておく。
+const SEARCH_MAX_RESULTS = 100;
+
+// 検索クエリ("from:a OR from:b OR ...")の文字数上限の目安(X API Basicティアの
+// クエリ長上限512文字に対して安全マージンを取った値)。ウォッチ対象アカウントが
+// 極端に多い場合はこれを超えるが、その場合はAPIがエラーを返すため、
+// ログで気づけるようにするだけに留める(件数を絞る運用上の対処が必要になる)。
+const SAFE_QUERY_LENGTH = 480;
 
 export interface FetchNewPostsResult {
   accountsChecked: number;
-  accountsSkipped: number;
   newPosts: number;
 }
 
-// ウォッチ対象アカウント(config/x-watch-accounts.jsonと同期済みのWatchedAccount)ごとに、
-// 直近の投稿(リツイート・リプライを除く本人の投稿のみ)を取得し、まだ保存していない
-// ものをWatchedPostとして新規作成する。X APIキー未設定の場合は何もせず終える
-// (ドライラン運用中でもエラーで落とさないため)。
-//
-// アカウント数が増えるほどX APIの呼び出し数(1アカウント1呼び出し)が線形に増えるため、
-// 過去の投稿時間帯から明らかに外れているアカウントはチェックをスキップする
-// (shouldCheckAccountNow)。新規登録アカウント(投稿履歴がまだ少ない)はブートストラップ
-// 期間として毎回チェックする。
+// ウォッチ対象アカウント(config/x-watch-accounts.jsonと同期済みのWatchedAccount)全員の
+// 直近の投稿(リツイート・リプライを除く本人の投稿のみ)を、X APIの投稿検索
+// (`from:user1 OR from:user2 OR ...`)で1回のAPI呼び出しにまとめて取得し、まだ保存して
+// いないものをWatchedPostとして新規作成する。アカウントを1人ずつ呼び出す方式
+// (userTimeline)だとアカウント数に比例してAPI呼び出し数が増えてしまうため、
+// discoverAccounts.tsと同じ投稿検索エンドポイントをまとめて使う方式にしている。
+// X APIキー未設定の場合は何もせず終える(ドライラン運用中でもエラーで落とさないため)。
 export async function fetchNewPosts(): Promise<FetchNewPostsResult> {
-  const config = loadXEngagementConfig();
   const accounts = await syncWatchedAccounts();
   const activeAccounts = accounts.filter((a) => a.active);
 
   if (!hasXCredentials()) {
     console.warn("[x-engagement] X API credentials not configured, skipping fetch");
-    return { accountsChecked: 0, accountsSkipped: 0, newPosts: 0 };
+    return { accountsChecked: 0, newPosts: 0 };
+  }
+  if (activeAccounts.length === 0) {
+    return { accountsChecked: 0, newPosts: 0 };
   }
 
-  const now = new Date();
-  let checked = 0;
-  let skipped = 0;
-  let newPosts = 0;
+  const accountByUsername = new Map(activeAccounts.map((a) => [a.username.toLowerCase(), a]));
 
-  for (const account of activeAccounts) {
-    if (!(await shouldCheckAccountNow(account.id, now, config))) {
-      skipped += 1;
-      continue;
-    }
-    checked += 1;
-    newPosts += await fetchNewPostsForAccount(account);
+  const fromClause = activeAccounts.map((a) => `from:${a.username}`).join(" OR ");
+  const query = `(${fromClause}) -is:retweet -is:reply`;
+  if (query.length > SAFE_QUERY_LENGTH) {
+    console.warn(
+      `[x-engagement] search query is ${query.length} chars, may exceed the API's query length limit ` +
+        `(consider trimming config/x-watch-accounts.json if this starts failing)`
+    );
   }
 
-  return { accountsChecked: checked, accountsSkipped: skipped, newPosts };
-}
-
-async function fetchNewPostsForAccount(account: WatchedAccount): Promise<number> {
-  const client = getXClient();
-
-  const xUserId = account.xUserId ?? (await resolveAndCacheUserId(account));
-  if (!xUserId) return 0;
-
-  const timeline = await client.v2.userTimeline(xUserId, {
-    max_results: TIMELINE_MAX_RESULTS,
-    exclude: ["retweets", "replies"],
+  const result = await getXClient().v2.search(query, {
+    max_results: SEARCH_MAX_RESULTS,
+    expansions: ["author_id"],
     "tweet.fields": ["created_at"],
+    "user.fields": ["username"],
   });
 
-  let created = 0;
-  for (const tweet of timeline.tweets) {
+  let newPosts = 0;
+  for (const tweet of result.tweets) {
+    const author = result.includes.author(tweet);
+    const account = author ? accountByUsername.get(author.username.toLowerCase()) : undefined;
+    if (!account) continue;
+
     const existing = await prisma.watchedPost.findUnique({ where: { tweetId: tweet.id } });
     if (existing) continue;
 
@@ -77,20 +72,8 @@ async function fetchNewPostsForAccount(account: WatchedAccount): Promise<number>
         postedAt: tweet.created_at ? new Date(tweet.created_at) : new Date(),
       },
     });
-    created += 1;
+    newPosts += 1;
   }
 
-  return created;
-}
-
-async function resolveAndCacheUserId(account: WatchedAccount): Promise<string | null> {
-  try {
-    const user = await getXClient().v2.userByUsername(account.username);
-    if (!user.data?.id) return null;
-    await prisma.watchedAccount.update({ where: { id: account.id }, data: { xUserId: user.data.id } });
-    return user.data.id;
-  } catch (error) {
-    console.warn(`[x-engagement] failed to resolve user id for @${account.username}: ${String(error)}`);
-    return null;
-  }
+  return { accountsChecked: activeAccounts.length, newPosts };
 }

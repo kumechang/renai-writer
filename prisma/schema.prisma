@@ -268,8 +268,6 @@ model WatchedAccount {
   username String  @unique
   // なぜこのアカウントをウォッチしているか(運用メモ)
   note     String?
-  // usernameからXのuser idを解決するAPI呼び出しを毎回避けるためのキャッシュ
-  xUserId  String?
   active   Boolean @default(true)
   posts    WatchedPost[]
 

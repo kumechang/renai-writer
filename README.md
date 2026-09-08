@@ -379,13 +379,13 @@ npm run x-engagement:discover
 ### 検知・下書き作成・手動投稿の流れ
 
 1. `npm run x-engagement:collect`（`.github/workflows/x-engagement-collect.yml`、
-   15分おき）が、ウォッチ対象アカウントの新着投稿（リツイート・リプライを除く本人の投稿）を
-   X APIから取得し、`WatchedPost`として保存する（ここはAPIの読み取りのみで、
-   自動化ルールの制約対象外）。ウォッチ対象が増えるほどAPI呼び出し数（1アカウント1回）が
-   線形に増えるため、過去の投稿時間帯（JST時）から明らかに外れているアカウントは
-   チェックをスキップする（`minPostHistoryForTimeFiltering`件未満の投稿履歴しかない
-   新規登録アカウントは、時間帯を判断できないため毎回チェックするブートストラップ期間になる。
-   `src/xEngagement/postingTimeProfile.ts`）。
+   15分おき）が、ウォッチ対象アカウント全員分の新着投稿（リツイート・リプライを除く本人の
+   投稿）を、X APIの投稿検索（`from:user1 OR from:user2 OR ...`）で**1回のAPI呼び出しに
+   まとめて**取得し、`WatchedPost`として保存する（`src/xEngagement/fetchNewPosts.ts`。
+   discoverAccounts.tsと同じ投稿検索エンドポイントを使う。ここはAPIの読み取りのみで、
+   自動化ルールの制約対象外）。アカウントを1人ずつ呼び出す方式と違い、ウォッチ対象が
+   増えてもAPI呼び出し数自体は増えない（クエリ文字数の上限、目安で20アカウント程度に
+   達するまで）。
    GitHub Actionsのscheduleは遅延・スキップされやすいため、外部のcronサービス
    （cron-job.orgなど）から`workflow_dispatch` APIを叩く方式を主経路にすることを推奨する
    （`x-post-generate.yml`と同じ方針。native scheduleは保険として残っている）。

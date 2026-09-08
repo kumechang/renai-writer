@@ -11,7 +11,5 @@
   },
   "minSpacingMinutes": 20,
   "recentFeedbackWindow": 10,
-  "maxPostAgeMinutes": 180,
-  "minPostHistoryForTimeFiltering": 8,
-  "activeHourWindow": 1
+  "maxPostAgeMinutes": 180
 }

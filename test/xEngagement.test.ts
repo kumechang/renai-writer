@@ -11,7 +11,6 @@ import { selectWatchedPost, skipStalePosts } from "../src/xEngagement/selectWatc
 import type { XEngagementConfig } from "../src/xEngagement/config";
 import { aggregateCandidates, type CandidateEntry, type DiscoveryConfig } from "../src/xEngagement/discoverAccounts";
 import { buildDiscoveryIssueBody } from "../src/xEngagement/discoveryIssue";
-import { computeActiveHours, isNearActiveHour, shouldCheckAccountNow } from "../src/xEngagement/postingTimeProfile";
 import { prisma } from "../src/db/client";
 
 function writeEventPayload(payload: unknown): string {
@@ -146,8 +145,6 @@ describe("shouldReplyNow / selectWatchedPost / skipStalePosts", () => {
     minSpacingMinutes: 20,
     recentFeedbackWindow: 10,
     maxPostAgeMinutes: 180,
-    minPostHistoryForTimeFiltering: 8,
-    activeHourWindow: 1,
   };
 
   beforeEach(async () => {
@@ -339,98 +336,5 @@ describe("buildDiscoveryIssueBody", () => {
   it("explains when no candidates were found", () => {
     const body = buildDiscoveryIssueBody([]);
     expect(body).toContain("見つかりませんでした");
-  });
-});
-
-describe("computeActiveHours / isNearActiveHour", () => {
-  it("treats each observed hour as active", () => {
-    const hours = computeActiveHours([9, 21, 9, 12]);
-    expect(hours).toEqual(new Set([9, 21, 12]));
-  });
-
-  it("returns true when the current hour matches an active hour exactly", () => {
-    expect(isNearActiveHour(9, new Set([9, 21]), 1)).toBe(true);
-  });
-
-  it("returns true when within the window of an active hour", () => {
-    expect(isNearActiveHour(10, new Set([9]), 1)).toBe(true);
-    expect(isNearActiveHour(8, new Set([9]), 1)).toBe(true);
-  });
-
-  it("returns false when outside the window of every active hour", () => {
-    expect(isNearActiveHour(15, new Set([9, 21]), 1)).toBe(false);
-  });
-
-  it("handles midnight wraparound correctly", () => {
-    // 23時台がactiveなら、0時台(window=1)も近いとみなす
-    expect(isNearActiveHour(0, new Set([23]), 1)).toBe(true);
-    expect(isNearActiveHour(1, new Set([23]), 1)).toBe(false);
-  });
-});
-
-describe("shouldCheckAccountNow", () => {
-  const config = { minPostHistoryForTimeFiltering: 8, activeHourWindow: 1 };
-
-  beforeEach(async () => {
-    await prisma.watchedPost.deleteMany();
-    await prisma.watchedAccount.deleteMany();
-  });
-
-  afterAll(async () => {
-    await prisma.$disconnect();
-  });
-
-  it("always checks accounts with insufficient post history (bootstrap)", async () => {
-    const account = await prisma.watchedAccount.create({ data: { username: "new_account" } });
-    // config.minPostHistoryForTimeFiltering未満の投稿履歴しかない
-    for (let i = 0; i < 3; i++) {
-      await prisma.watchedPost.create({
-        data: {
-          watchedAccountId: account.id,
-          tweetId: `bootstrap-${i}`,
-          text: "本文",
-          // 現在時刻から大きく離れた時間帯の投稿だけにしても、履歴不足なら毎回チェックする
-          postedAt: new Date("2026-01-01T15:00:00Z"),
-        },
-      });
-    }
-    // 2026-09-08T00:00:00Z = JST 09:00 (投稿履歴の時間帯とは無関係のはず)
-    const now = new Date("2026-09-08T00:00:00Z");
-    expect(await shouldCheckAccountNow(account.id, now, config)).toBe(true);
-  });
-
-  it("skips accounts whose current time is far from their usual posting hours", async () => {
-    const account = await prisma.watchedAccount.create({ data: { username: "night_owl" } });
-    // JST 22時台に繰り返し投稿している十分な履歴を作る(config.minPostHistoryForTimeFiltering以上)
-    for (let i = 0; i < 10; i++) {
-      await prisma.watchedPost.create({
-        data: {
-          watchedAccountId: account.id,
-          tweetId: `night-${i}`,
-          text: "本文",
-          postedAt: new Date("2026-01-01T13:00:00Z"), // JST 22:00
-        },
-      });
-    }
-    // 2026-09-08T00:00:00Z = JST 09:00 (22時から離れている)
-    const now = new Date("2026-09-08T00:00:00Z");
-    expect(await shouldCheckAccountNow(account.id, now, config)).toBe(false);
-  });
-
-  it("checks accounts whose current time is near their usual posting hours", async () => {
-    const account = await prisma.watchedAccount.create({ data: { username: "morning_person" } });
-    for (let i = 0; i < 10; i++) {
-      await prisma.watchedPost.create({
-        data: {
-          watchedAccountId: account.id,
-          tweetId: `morning-${i}`,
-          text: "本文",
-          postedAt: new Date("2026-01-01T00:00:00Z"), // JST 09:00
-        },
-      });
-    }
-    // 2026-09-08T00:00:00Z = JST 09:00 (投稿履歴と一致)
-    const now = new Date("2026-09-08T00:00:00Z");
-    expect(await shouldCheckAccountNow(account.id, now, config)).toBe(true);
   });
 });

@@ -15,7 +15,7 @@ import { fetchNewPosts } from "../xEngagement/fetchNewPosts";
 async function main() {
   const result = await fetchNewPosts();
   console.log(
-    `[x-engagement] checked ${result.accountsChecked} account(s) (skipped ${result.accountsSkipped} outside their usual posting hours), found ${result.newPosts} new post(s)`
+    `[x-engagement] checked ${result.accountsChecked} account(s), found ${result.newPosts} new post(s)`
   );
 }
 
