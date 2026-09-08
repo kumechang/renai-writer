@@ -3,6 +3,8 @@ import { prisma } from "../db/client";
 import { getXClient } from "../xPoster/xClient";
 import { hasXCredentials } from "../xPoster/env";
 import { syncWatchedAccounts } from "./syncWatchedAccounts";
+import { loadXEngagementConfig } from "./config";
+import { shouldCheckAccountNow } from "./postingTimeProfile";
 
 // 1アカウントあたり取得する最新投稿件数(X APIの最小値。既にtweetIdを保存済みのものは
 // insertでスキップされるため、多めに取る必要はない)。
@@ -10,6 +12,7 @@ const TIMELINE_MAX_RESULTS = 5;
 
 export interface FetchNewPostsResult {
   accountsChecked: number;
+  accountsSkipped: number;
   newPosts: number;
 }
 
@@ -17,21 +20,36 @@ export interface FetchNewPostsResult {
 // 直近の投稿(リツイート・リプライを除く本人の投稿のみ)を取得し、まだ保存していない
 // ものをWatchedPostとして新規作成する。X APIキー未設定の場合は何もせず終える
 // (ドライラン運用中でもエラーで落とさないため)。
+//
+// アカウント数が増えるほどX APIの呼び出し数(1アカウント1呼び出し)が線形に増えるため、
+// 過去の投稿時間帯から明らかに外れているアカウントはチェックをスキップする
+// (shouldCheckAccountNow)。新規登録アカウント(投稿履歴がまだ少ない)はブートストラップ
+// 期間として毎回チェックする。
 export async function fetchNewPosts(): Promise<FetchNewPostsResult> {
+  const config = loadXEngagementConfig();
   const accounts = await syncWatchedAccounts();
   const activeAccounts = accounts.filter((a) => a.active);
 
   if (!hasXCredentials()) {
     console.warn("[x-engagement] X API credentials not configured, skipping fetch");
-    return { accountsChecked: 0, newPosts: 0 };
+    return { accountsChecked: 0, accountsSkipped: 0, newPosts: 0 };
   }
 
+  const now = new Date();
+  let checked = 0;
+  let skipped = 0;
   let newPosts = 0;
+
   for (const account of activeAccounts) {
+    if (!(await shouldCheckAccountNow(account.id, now, config))) {
+      skipped += 1;
+      continue;
+    }
+    checked += 1;
     newPosts += await fetchNewPostsForAccount(account);
   }
 
-  return { accountsChecked: activeAccounts.length, newPosts };
+  return { accountsChecked: checked, accountsSkipped: skipped, newPosts };
 }
 
 async function fetchNewPostsForAccount(account: WatchedAccount): Promise<number> {

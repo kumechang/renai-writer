@@ -381,7 +381,14 @@ npm run x-engagement:discover
 1. `npm run x-engagement:collect`（`.github/workflows/x-engagement-collect.yml`、
    15分おき）が、ウォッチ対象アカウントの新着投稿（リツイート・リプライを除く本人の投稿）を
    X APIから取得し、`WatchedPost`として保存する（ここはAPIの読み取りのみで、
-   自動化ルールの制約対象外）。
+   自動化ルールの制約対象外）。ウォッチ対象が増えるほどAPI呼び出し数（1アカウント1回）が
+   線形に増えるため、過去の投稿時間帯（JST時）から明らかに外れているアカウントは
+   チェックをスキップする（`minPostHistoryForTimeFiltering`件未満の投稿履歴しかない
+   新規登録アカウントは、時間帯を判断できないため毎回チェックするブートストラップ期間になる。
+   `src/xEngagement/postingTimeProfile.ts`）。
+   GitHub Actionsのscheduleは遅延・スキップされやすいため、外部のcronサービス
+   （cron-job.orgなど）から`workflow_dispatch` APIを叩く方式を主経路にすることを推奨する
+   （`x-post-generate.yml`と同じ方針。native scheduleは保険として残っている）。
 2. `npm run x-engagement:generate`（`.github/workflows/x-engagement-generate.yml`、
    30分おき）が、未対応の投稿から1件選び、ライターのペルソナ（`config/x_account_info.md`、
    X投稿と共通）でリプライ文をClaude APIに生成させる→セルフチェック→承認issue作成、

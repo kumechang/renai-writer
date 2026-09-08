@@ -6,6 +6,11 @@ name: X Engagement - Collect
 # 高頻度(15分おき)で行う。実際のリプライ生成・投稿はx-engagement-generate.ymlが
 # 別ワークフローとして1日の上限に沿ったペースで行う。
 #
+# ウォッチ対象アカウントが増えるほど1回あたりのX API呼び出し数(1アカウント1呼び出し)が
+# 線形に増えるため、各アカウントの過去の投稿時間帯から明らかに外れている場合はチェックを
+# スキップする(src/xEngagement/postingTimeProfile.ts)。新規登録アカウントは投稿履歴が
+# 十分貯まるまで毎回チェックする(ブートストラップ)。
+#
 # GitHub Actionsのscheduleは数時間〜1日単位で遅延・スキップされることがあり
 # (x-post-generate.ymlで確認済み)、15分おきのような高頻度実行では特に顕著になりうる。
 # 確実性を優先する場合は、外部のcronサービス(cron-job.orgなど)からworkflow_dispatch APIを
