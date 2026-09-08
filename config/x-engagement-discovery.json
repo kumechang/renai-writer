@@ -1,15 +1,17 @@
 {
   "searchQueries": [
-    "#恋愛コラム lang:ja -is:retweet -is:reply",
-    "#恋愛心理学 lang:ja -is:retweet -is:reply",
-    "#恋愛アドバイザー lang:ja -is:retweet -is:reply",
-    "#婚活アドバイザー lang:ja -is:retweet -is:reply",
-    "#復縁カウンセラー lang:ja -is:retweet -is:reply",
-    "恋愛コラムニスト lang:ja -is:retweet -is:reply",
+    "恋愛カウンセラー lang:ja -is:retweet -is:reply",
     "恋愛心理カウンセラー lang:ja -is:retweet -is:reply",
-    "執着を手放す 恋愛 lang:ja -is:retweet -is:reply",
-    "元カレを忘れる方法 lang:ja -is:retweet -is:reply",
-    "片思いを終わらせる lang:ja -is:retweet -is:reply"
+    "婚活カウンセラー lang:ja -is:retweet -is:reply",
+    "婚活アドバイザー lang:ja -is:retweet -is:reply",
+    "復縁カウンセラー lang:ja -is:retweet -is:reply",
+    "恋愛コラムニスト lang:ja -is:retweet -is:reply",
+    "恋愛系ライター lang:ja -is:retweet -is:reply",
+    "夫婦カウンセラー lang:ja -is:retweet -is:reply",
+    "パートナーシップコーチ lang:ja -is:retweet -is:reply",
+    "自己肯定感 恋愛 lang:ja -is:retweet -is:reply",
+    "#恋愛コラム lang:ja -is:retweet -is:reply",
+    "#恋愛心理学 lang:ja -is:retweet -is:reply"
   ],
   "minFollowers": 10000,
   "maxFollowers": 500000,
