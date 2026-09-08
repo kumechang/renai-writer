@@ -1,12 +1,15 @@
 name: X Engagement - Generate Reply
 
 # ウォッチ対象アカウントの未対応の新着投稿(WatchedPost)に対して、心のこもった
-# (かつ有益な)リプライをClaude APIで生成し、GitHub issueでの承認待ちにする
-# (approvalMode: autoの場合はセルフチェック合格時にその場で投稿まで行う)。
+# (かつ有益な)リプライ案をClaude APIで生成し、GitHub issueでの承認待ちにする
+# (approvalMode: autoの場合はセルフチェック合格時にその場で下書きを確定する)。
+# X APIの自動化ルール上、自分宛てのメンションでない投稿への自動リプライ投稿はできない
+# ため、実際の投稿はissueを見た運用者がXアプリ等から手動で行う(このワークフローは
+# X APIへの書き込みを行わないため、X_API_KEY等の認証情報は不要)。
 #
 # 1日の上限(maxRepliesPerDay、既定5件)・直近生成からの間隔(minSpacingMinutes)・
 # リプライ可能時間帯(replyWindow)による制御があるため、頻繁に起動してもClaude API呼び出し
-# (コスト)・実際の投稿は「毎日3〜5回」程度のペースに保たれる。
+# (コスト)・実際に作られる下書きは「毎日3〜5回」程度のペースに保たれる。
 #
 # GitHub Actionsのscheduleは遅延・スキップされることがあるため
 # (x-post-generate.ymlで確認済み)、外部のcronサービスからworkflow_dispatch APIを
@@ -46,15 +49,11 @@ jobs:
       - name: Apply database migrations
         run: npx prisma migrate deploy
 
-      - name: Generate a reply for a watched post
+      - name: Generate a reply draft for a watched post
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
-          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
         run: npm run x-engagement:generate
 
       - name: Persist bot database

@@ -2,7 +2,9 @@ name: X Engagement - Handle Approval
 
 # Xリプライ承認issueへのコメントを検知する。「承認」「却下」ならその通り処理し、
 # それ以外の自由記述コメントは次回以降の生成に活かすフィードバックとして記録する
-# (x-post-approval.ymlと同じ構成)。
+# (x-post-approval.ymlと同じ構成)。「承認」された場合も、X APIへの投稿は行わない
+# (X APIの自動化ルール上できないため。issueに手動投稿を促すコメントを残すのみ)。
+# このワークフローはX APIへの書き込みを行わないため、X_API_KEY等の認証情報は不要。
 
 on:
   issue_comment:
@@ -46,10 +48,6 @@ jobs:
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
-          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
         run: npm run x-engagement:handle-approval
 
       - name: Persist bot database

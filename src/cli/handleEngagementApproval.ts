@@ -13,7 +13,8 @@ import { postIssueComment, closeIssue } from "../lib/github";
 
 // GitHub Actions (x-engagement-approval.yml, issue_commentイベント) から実行される
 // エントリポイント。承認issueへのコメントを検知し、
-//   - 承認/却下前のリプライへの「承認」「却下」コメント → 承認ならXへ投稿、却下ならそこで終了
+//   - 承認/却下前のリプライへの「承認」「却下」コメント → 承認なら下書きを確定(手動投稿を
+//     案内するコメントを残す。X APIでは投稿しない)、却下ならそこで終了
 //   - それ以外のコメント(自由記述、または既に処理済みのリプライへの後追いコメント) →
 //     次回以降の生成に活かすフィードバックとして記録
 // を行う(src/cli/handleXPostApproval.tsと同じ構成)。
@@ -42,10 +43,9 @@ async function main() {
   }
   const { githubIssueOwner: owner, githubIssueRepo: repo } = reply;
 
-  // post_failedからの再承認(投稿失敗後のリトライ)は許容するが、それ以外の
-  // 承認待ち状態でない投稿への「承認」「却下」コメントは、承認/却下の判定をやり直さず
+  // 承認待ち状態でないリプライへの「承認」「却下」コメントは、判定をやり直さず
   // フィードバックとして記録する。
-  const actionable = reply.status === "pending_approval" || reply.status === "post_failed";
+  const actionable = reply.status === "pending_approval";
 
   if (event.decision === "approve" && actionable) {
     const approved = await prisma.engagementReply.update({

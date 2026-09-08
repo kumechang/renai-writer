@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 export interface XEngagementConfig {
-  // manual: GitHub issueでの人による承認後にリプライを投稿する / auto: セルフチェック合格時に即時投稿する
+  // manual: GitHub issueで人が「承認」とコメントするまで下書きを確定しない /
+  // auto: セルフチェック合格時に即座に下書きを確定する。
+  // どちらの場合も、実際にXへ投稿するのは運用者が手動で行う(X APIの自動化ルール上、
+  // 自分宛てのメンションでない投稿への自動リプライ投稿はできないため)。
   approvalMode: "manual" | "auto";
   claudeModel: string;
   xCharLimit: number;

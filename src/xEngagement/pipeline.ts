@@ -26,7 +26,9 @@ export interface GenerateEngagementReplyResult {
 
 // ウォッチ対象アカウントの新着投稿(WatchedPost, status: "new")を1件選び、リプライ文を
 // 生成 → セルフチェック(文字数超過ならやり直し) → DB保存 → 承認issue作成、まで行う。
-// autoモードかつ合格ならその場で投稿まで行う(src/xPoster/pipeline.tsと同じ構成)。
+// autoモードかつ合格ならその場で下書きを確定する(X APIの自動化ルール上、自分宛てで
+// ないメンションへの自動リプライ投稿はできないため、実際の投稿は運用者が手動で行う。
+// 構成自体はsrc/xPoster/pipeline.tsを踏襲している)。
 // 対象になる投稿が無い場合はnullを返す(定期実行では想定内の状態のため)。
 export async function generateEngagementReply(now: Date = new Date()): Promise<GenerateEngagementReplyResult | null> {
   const config = loadXEngagementConfig();
@@ -159,19 +161,19 @@ async function generateReplyForPost(
   });
 
   // autoモードでも、セルフチェック不合格(pass=false)の場合は必ず人の承認待ちに倒す
-  // (自動投稿がセルフチェックをバイパスすることは無いようにする安全策)。
+  // (下書きの自動確定がセルフチェックをバイパスすることは無いようにする安全策)。
   if (config.approvalMode === "auto" && selfCheck.data.pass) {
     await finalizeEngagementReply(updated);
-    const posted = await prisma.engagementReply.findUniqueOrThrow({ where: { id: reply.id } });
+    const finalized = await prisma.engagementReply.findUniqueOrThrow({ where: { id: reply.id } });
     return {
-      replyId: posted.id,
+      replyId: finalized.id,
       authorUsername,
       postText: post.text,
       finalText,
       score: selfCheck.data.score,
       pass: selfCheck.data.pass,
-      status: posted.status,
-      githubIssueUrl: posted.githubIssueUrl,
+      status: finalized.status,
+      githubIssueUrl: finalized.githubIssueUrl,
     };
   }
 

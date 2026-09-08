@@ -44,6 +44,8 @@ export function buildEngagementIssueBody(content: EngagementApprovalIssueContent
     improvements,
     "",
     "---",
+    "**投稿はX APIの自動化ルール上、自動では行いません。** 承認後、この文面を" +
+      "Xアプリ等から手動でリプライ投稿してください。",
     "このリプライを承認する場合はコメントで「承認」、却下する場合は「却下」と入力してください。",
     "却下する場合、「却下 もう少し落ち着いたトーンがいい」のように理由を続けて書くと記録されます。",
   ];

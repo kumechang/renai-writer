@@ -335,8 +335,14 @@ npm run x-post:analyze-posting-times  # エンゲージメント実績から時�
 業者に頼らずフォロワーを増やす方法として、「同じジャンルでフォロワー1万人以上の憧れの
 アカウントを5〜10人フォローし、通知オンにして、投稿直後に心のこもった（かつ有益な）
 リプライを毎日3〜5回返す」というアドバイスがある。これをXの新着投稿の検知・
-リプライ文の生成・投稿まで自動化した仕組み。`## X投稿`と同じく、GitHub issueでの
-人による承認・Claude APIでの文面生成を経てXに投稿する（`src/xEngagement/`）。
+リプライ文の下書き作成まで自動化した仕組み（`src/xEngagement/`）。
+
+**実際のXへの投稿は自動化していない。** X APIの自動化ルール（[X's automation
+development rules](https://help.x.com/en/rules-and-policies/x-automation)）は、
+自分のアカウントがメンションされていない他アカウントの投稿への自動リプライを禁止して
+おり、ウォッチ対象アカウントの投稿は当然これに該当する。そのため、`## X投稿`（完成記事の
+告知）とは異なり、この機能はGitHub issueに「心のこもったリプライ案」を下書きとして
+用意するところまでで、実際の投稿は運用者がXアプリ等から手動で行う。
 
 ### セットアップ
 
@@ -370,27 +376,31 @@ npm run x-post:analyze-posting-times  # エンゲージメント実績から時�
 npm run x-engagement:discover
 ```
 
-### 検知・生成・投稿の流れ
+### 検知・下書き作成・手動投稿の流れ
 
 1. `npm run x-engagement:collect`（`.github/workflows/x-engagement-collect.yml`、
    15分おき）が、ウォッチ対象アカウントの新着投稿（リツイート・リプライを除く本人の投稿）を
-   X APIから取得し、`WatchedPost`として保存する。
+   X APIから取得し、`WatchedPost`として保存する（ここはAPIの読み取りのみで、
+   自動化ルールの制約対象外）。
 2. `npm run x-engagement:generate`（`.github/workflows/x-engagement-generate.yml`、
    30分おき）が、未対応の投稿から1件選び、ライターのペルソナ（`config/x_account_info.md`、
    X投稿と共通）でリプライ文をClaude APIに生成させる→セルフチェック→承認issue作成、
-   まで行う（`approvalMode: "auto"`ならセルフチェック合格時にその場で投稿する）。
+   まで行う（`approvalMode: "auto"`ならセルフチェック合格時にその場で下書きを確定する）。
    「投稿した瞬間に返す」という狙いを外さないよう、投稿から`maxPostAgeMinutes`
    （既定180分）を超えた投稿は対象にしない。
 3. `npm run x-engagement:handle-approval`（`.github/workflows/x-engagement-approval.yml`、
    `pending-x-engagement-approval`ラベル付きissueへの`issue_comment`）が、承認issueへの
    「承認」「却下」コメント、またはそれ以外の自由記述（次回生成へのフィードバック）を処理する。
+   「承認」されると、issueに「この文面で手動投稿してください」というコメントが付いて
+   クローズされる。**運用者はここでissueに書かれた文面をコピーし、Xアプリ等から自分で
+   リプライを投稿する。**
 
 ### ペース制御
 
 「毎日3〜5回」というアドバイスに沿って、`config/x-engagement.json`の
 `maxRepliesPerDay`（既定5件）・`minSpacingMinutes`（既定20分、連投防止）・
-`replyWindow`（既定JST 7〜24時）で生成頻度を抑える。ワークフロー自体は高頻度
-（検知15分おき・生成30分おき）で起動するが、実際に生成・投稿されるのはこのペース制御に
+`replyWindow`（既定JST 7〜24時）で下書き生成の頻度を抑える。ワークフロー自体は高頻度
+（検知15分おき・生成30分おき）で起動するが、実際に下書きが作られるのはこのペース制御に
 従った回数だけになる。
 
 `config/x-poster.json`と同様、`approvalMode`（`manual` / `auto`）・使用モデル・
@@ -399,13 +409,13 @@ npm run x-engagement:discover
 ```bash
 npm run x-engagement:discover         # ウォッチ候補アカウントをX検索から探してissueにまとめる
 npm run x-engagement:collect          # ウォッチ対象アカウントの新着投稿を取得
-npm run x-engagement:generate         # 未対応の投稿からリプライ文を生成(自動選択)
+npm run x-engagement:generate         # 未対応の投稿からリプライ文の下書きを生成(自動選択)
 npm run x-engagement:handle-approval  # 承認issueへのコメント処理(Actions経由での実行を想定)
 ```
 
 必要な環境変数はX投稿の仕組みと共通（`ANTHROPIC_API_KEY` / `GITHUB_TOKEN` /
-`GITHUB_REPOSITORY` / `X_API_KEY` 等、`.env.example`参照）。X APIキーが未設定でも
-ドライラン（ログ出力のみ）で動作する。
+`GITHUB_REPOSITORY` / `X_API_KEY` 等、`.env.example`参照）。X APIキーは新着投稿の取得
+（読み取り）と`x-engagement:discover`での検索にのみ使い、リプライの投稿には使わない。
 
 ## テスト
 

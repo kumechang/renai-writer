@@ -174,7 +174,7 @@ describe("shouldReplyNow / selectWatchedPost / skipStalePosts", () => {
         data: { watchedAccountId: account.id, tweetId: `t-${i}`, text: "本文", postedAt: now, status: "processing" },
       });
       await prisma.engagementReply.create({
-        data: { watchedPostId: post.id, generatedText: "本文", finalText: "本文", status: "posted" },
+        data: { watchedPostId: post.id, generatedText: "本文", finalText: "本文", status: "approved" },
       });
     }
     expect(await shouldReplyNow(config, now)).toBe(false);
@@ -187,7 +187,7 @@ describe("shouldReplyNow / selectWatchedPost / skipStalePosts", () => {
       data: { watchedAccountId: account.id, tweetId: "t-recent", text: "本文", postedAt: now, status: "processing" },
     });
     await prisma.engagementReply.create({
-      data: { watchedPostId: post.id, generatedText: "本文", finalText: "本文", status: "posted" },
+      data: { watchedPostId: post.id, generatedText: "本文", finalText: "本文", status: "approved" },
     });
     expect(await shouldReplyNow(config, now)).toBe(false);
   });

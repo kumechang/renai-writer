@@ -288,7 +288,9 @@ model WatchedPost {
   postedAt DateTime
 
   // new: 未対応 / processing: リプライ生成中〜承認待ち(EngagementReply参照) /
-  // replied: リプライ投稿済み / skipped: 対象外(投稿から時間が経ちすぎたなど)
+  // drafted: リプライ文の下書きが確定した(実際の投稿は運用者がXアプリ等から手動で行う。
+  // X APIの自動化ルール上、自分宛てのメンションでない投稿への自動リプライはできないため) /
+  // skipped: 対象外(投稿から時間が経ちすぎたなど)
   status String @default("new")
 
   reply EngagementReply?
@@ -298,20 +300,22 @@ model WatchedPost {
   @@index([watchedAccountId])
 }
 
-// ウォッチ対象の投稿に対して生成した「心のこもった(かつ有益な)」リプライ。
-// XPostと同じくGitHub issueでの人による承認を経てXに投稿する
-// (承認フロー・自動投稿の仕組みはsrc/xPosterのものを踏襲している)。
+// ウォッチ対象の投稿に対して生成した「心のこもった(かつ有益な)」リプライの下書き。
+// GitHub issueでの人による確認を経て文面を確定するが、投稿自体はX APIの自動化ルール
+// (自分宛てのメンションでない投稿への自動リプライを禁止)に抵触するため行わない。
+// 確定した文面は、運用者がXアプリ等から手動で投稿する想定(承認フローの構成自体は
+// src/xPosterのものを踏襲している)。
 model EngagementReply {
   id            String      @id @default(cuid())
   watchedPostId String      @unique
   watchedPost   WatchedPost @relation(fields: [watchedPostId], references: [id], onDelete: Cascade)
 
   generatedText String
-  // セルフチェック後の最終リプライ文(不合格なら修正済み)。実際にXへ投稿されるのはこちら。
+  // セルフチェック後の最終リプライ文(不合格なら修正済み)。運用者が手動投稿する際に使うのはこちら。
   finalText     String
   selfCheckJson String?
 
-  // pending_approval -> approved / rejected -> posted / posted_dryrun / post_failed
+  // pending_approval -> approved(下書き確定、手動投稿待ち) / rejected
   status String @default("pending_approval")
 
   githubIssueOwner  String?
@@ -322,10 +326,6 @@ model EngagementReply {
   approvedBy      String?
   rejectedBy      String?
   rejectionReason String?
-
-  tweetId       String?
-  tweetUrl      String?
-  failureReason String?
 
   // 投稿後(承認前も含む)に運用者がissueへ残した「気になる」コメントの蓄積。
   // 次回以降のリプライ生成時に「避けるべき方向性」のヒントとして使う。
