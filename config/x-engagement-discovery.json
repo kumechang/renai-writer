@@ -1,0 +1,15 @@
+{
+  "searchQueries": [
+    "失恋 lang:ja -is:retweet -is:reply",
+    "元カレ 忘れられない lang:ja -is:retweet -is:reply",
+    "元カノ 忘れられない lang:ja -is:retweet -is:reply",
+    "片思い しんどい lang:ja -is:retweet -is:reply",
+    "未練 手放す lang:ja -is:retweet -is:reply",
+    "恋愛post lang:ja -is:retweet -is:reply",
+    "婚活 疲れた lang:ja -is:retweet -is:reply",
+    "復縁したい lang:ja -is:retweet -is:reply"
+  ],
+  "minFollowers": 10000,
+  "maxFollowers": 500000,
+  "maxCandidates": 15
+}

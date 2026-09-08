@@ -353,6 +353,23 @@ npm run x-post:analyze-posting-times  # エンゲージメント実績から時�
 自動的に同期される（ファイルから削除したアカウントは`active: false`になるだけで、
 過去の履歴は残る）。
 
+#### ウォッチ候補アカウントの探索（`npm run x-engagement:discover`）
+
+手作業でアカウントを探す代わりに、`config/x-engagement-discovery.json`の検索キーワード
+（恋愛の執着・未練・片思いなどジャンルに沿った語）でXの直近投稿を検索し、フォロワー数の
+多い投稿者（`minFollowers`〜`maxFollowers`、既定1万〜50万人。`config/x-watch-accounts.json`
+に未登録のアカウントのみ）を候補としてGitHub issue（`x-engagement-discovery`ラベル）に
+まとめるコマンド。定期実行はせず、必要なときに手動で実行する想定
+（`.github/workflows/x-engagement-discover.yml`、`workflow_dispatch`）。
+
+見つかった候補は自動ではウォッチ対象に加えず、issueの内容を確認したうえで運用者が
+`config/x-watch-accounts.json`に追記する（DBを使わない読み取り専用の処理のため、
+他のx-engagement-*ワークフローと違いprisma migrate deployは不要）。
+
+```bash
+npm run x-engagement:discover
+```
+
 ### 検知・生成・投稿の流れ
 
 1. `npm run x-engagement:collect`（`.github/workflows/x-engagement-collect.yml`、
@@ -380,6 +397,7 @@ npm run x-post:analyze-posting-times  # エンゲージメント実績から時�
 文字数上限・セルフチェックの合格基準もここで調整する。
 
 ```bash
+npm run x-engagement:discover         # ウォッチ候補アカウントをX検索から探してissueにまとめる
 npm run x-engagement:collect          # ウォッチ対象アカウントの新着投稿を取得
 npm run x-engagement:generate         # 未対応の投稿からリプライ文を生成(自動選択)
 npm run x-engagement:handle-approval  # 承認issueへのコメント処理(Actions経由での実行を想定)

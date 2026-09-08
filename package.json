@@ -23,7 +23,8 @@
     "x-post:analyze-posting-times": "ts-node src/cli/analyzeXPostTimes.ts",
     "x-engagement:collect": "ts-node src/cli/collectWatchedPosts.ts",
     "x-engagement:generate": "ts-node src/cli/generateEngagementReplies.ts",
-    "x-engagement:handle-approval": "ts-node src/cli/handleEngagementApproval.ts"
+    "x-engagement:handle-approval": "ts-node src/cli/handleEngagementApproval.ts",
+    "x-engagement:discover": "ts-node src/cli/discoverWatchAccounts.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

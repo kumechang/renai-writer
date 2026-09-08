@@ -1,0 +1,41 @@
+name: X Engagement - Discover Accounts
+
+# config/x-engagement-discovery.json の検索キーワードでXの直近投稿を検索し、フォロワー数の
+# 多い投稿者(config/x-watch-accounts.json に未登録のアカウント)を候補としてGitHub issueに
+# まとめる。「フォロワー1万人以上の憧れのアカウントを5〜10人フォローする」という最初の
+# ステップを、手作業でのアカウント探しなしに始められるようにするためのもの。
+#
+# DBを使わない読み取り専用の処理(WatchedAccount等への書き込みは行わない)のため、
+# 他のx-engagement-*ワークフローと違いprisma migrate deploy・bot.dbの永続化は不要。
+# 定期実行はせず、必要なときに手動で実行する想定。
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Search X for candidate accounts to watch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: npm run x-engagement:discover
