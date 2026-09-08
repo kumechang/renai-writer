@@ -1,13 +1,15 @@
 {
   "searchQueries": [
-    "失恋 lang:ja -is:retweet -is:reply",
-    "元カレ 忘れられない lang:ja -is:retweet -is:reply",
-    "元カノ 忘れられない lang:ja -is:retweet -is:reply",
-    "片思い しんどい lang:ja -is:retweet -is:reply",
-    "未練 手放す lang:ja -is:retweet -is:reply",
-    "恋愛post lang:ja -is:retweet -is:reply",
-    "婚活 疲れた lang:ja -is:retweet -is:reply",
-    "復縁したい lang:ja -is:retweet -is:reply"
+    "#恋愛コラム lang:ja -is:retweet -is:reply",
+    "#恋愛心理学 lang:ja -is:retweet -is:reply",
+    "#恋愛アドバイザー lang:ja -is:retweet -is:reply",
+    "#婚活アドバイザー lang:ja -is:retweet -is:reply",
+    "#復縁カウンセラー lang:ja -is:retweet -is:reply",
+    "恋愛コラムニスト lang:ja -is:retweet -is:reply",
+    "恋愛心理カウンセラー lang:ja -is:retweet -is:reply",
+    "執着を手放す 恋愛 lang:ja -is:retweet -is:reply",
+    "元カレを忘れる方法 lang:ja -is:retweet -is:reply",
+    "片思いを終わらせる lang:ja -is:retweet -is:reply"
   ],
   "minFollowers": 10000,
   "maxFollowers": 500000,
