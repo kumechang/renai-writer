@@ -330,6 +330,65 @@ npm run x-post:analyze-posting-times  # エンゲージメント実績から時�
 必要な環境変数（`X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_SECRET`）は
 `.env.example` を参照。X APIキーが未設定でもドライラン（ログ出力のみ）で動作する。
 
+## Xエンゲージメント施策（憧れのアカウントをウォッチしてリプライ）
+
+業者に頼らずフォロワーを増やす方法として、「同じジャンルでフォロワー1万人以上の憧れの
+アカウントを5〜10人フォローし、通知オンにして、投稿直後に心のこもった（かつ有益な）
+リプライを毎日3〜5回返す」というアドバイスがある。これをXの新着投稿の検知・
+リプライ文の生成・投稿まで自動化した仕組み。`## X投稿`と同じく、GitHub issueでの
+人による承認・Claude APIでの文面生成を経てXに投稿する（`src/xEngagement/`）。
+
+### セットアップ
+
+`config/x-watch-accounts.json` に、ウォッチしたいアカウント（フォロワー1万人以上の
+憧れのアカウントなど）を5〜10件程度登録する。
+
+```json
+[
+  { "username": "some_account", "note": "同ジャンルで影響力のあるアカウント" }
+]
+```
+
+登録したアカウントは、次回の`npm run x-engagement:collect`実行時にDB（`WatchedAccount`）へ
+自動的に同期される（ファイルから削除したアカウントは`active: false`になるだけで、
+過去の履歴は残る）。
+
+### 検知・生成・投稿の流れ
+
+1. `npm run x-engagement:collect`（`.github/workflows/x-engagement-collect.yml`、
+   15分おき）が、ウォッチ対象アカウントの新着投稿（リツイート・リプライを除く本人の投稿）を
+   X APIから取得し、`WatchedPost`として保存する。
+2. `npm run x-engagement:generate`（`.github/workflows/x-engagement-generate.yml`、
+   30分おき）が、未対応の投稿から1件選び、ライターのペルソナ（`config/x_account_info.md`、
+   X投稿と共通）でリプライ文をClaude APIに生成させる→セルフチェック→承認issue作成、
+   まで行う（`approvalMode: "auto"`ならセルフチェック合格時にその場で投稿する）。
+   「投稿した瞬間に返す」という狙いを外さないよう、投稿から`maxPostAgeMinutes`
+   （既定180分）を超えた投稿は対象にしない。
+3. `npm run x-engagement:handle-approval`（`.github/workflows/x-engagement-approval.yml`、
+   `pending-x-engagement-approval`ラベル付きissueへの`issue_comment`）が、承認issueへの
+   「承認」「却下」コメント、またはそれ以外の自由記述（次回生成へのフィードバック）を処理する。
+
+### ペース制御
+
+「毎日3〜5回」というアドバイスに沿って、`config/x-engagement.json`の
+`maxRepliesPerDay`（既定5件）・`minSpacingMinutes`（既定20分、連投防止）・
+`replyWindow`（既定JST 7〜24時）で生成頻度を抑える。ワークフロー自体は高頻度
+（検知15分おき・生成30分おき）で起動するが、実際に生成・投稿されるのはこのペース制御に
+従った回数だけになる。
+
+`config/x-poster.json`と同様、`approvalMode`（`manual` / `auto`）・使用モデル・
+文字数上限・セルフチェックの合格基準もここで調整する。
+
+```bash
+npm run x-engagement:collect          # ウォッチ対象アカウントの新着投稿を取得
+npm run x-engagement:generate         # 未対応の投稿からリプライ文を生成(自動選択)
+npm run x-engagement:handle-approval  # 承認issueへのコメント処理(Actions経由での実行を想定)
+```
+
+必要な環境変数はX投稿の仕組みと共通（`ANTHROPIC_API_KEY` / `GITHUB_TOKEN` /
+`GITHUB_REPOSITORY` / `X_API_KEY` 等、`.env.example`参照）。X APIキーが未設定でも
+ドライラン（ログ出力のみ）で動作する。
+
 ## テスト
 
 ```bash

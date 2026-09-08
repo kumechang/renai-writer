@@ -1,0 +1,68 @@
+name: X Engagement - Generate Reply
+
+# ウォッチ対象アカウントの未対応の新着投稿(WatchedPost)に対して、心のこもった
+# (かつ有益な)リプライをClaude APIで生成し、GitHub issueでの承認待ちにする
+# (approvalMode: autoの場合はセルフチェック合格時にその場で投稿まで行う)。
+#
+# 1日の上限(maxRepliesPerDay、既定5件)・直近生成からの間隔(minSpacingMinutes)・
+# リプライ可能時間帯(replyWindow)による制御があるため、頻繁に起動してもClaude API呼び出し
+# (コスト)・実際の投稿は「毎日3〜5回」程度のペースに保たれる。
+#
+# GitHub Actionsのscheduleは遅延・スキップされることがあるため
+# (x-post-generate.ymlで確認済み)、外部のcronサービスからworkflow_dispatch APIを
+# 定期的に叩く方式を主経路にすること。native scheduleは保険として残す。
+
+on:
+  schedule:
+    # 30分おき(保険。上記の通り遅延・スキップされうる)。
+    - cron: "8,38 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: console-state
+  cancel-in-progress: false
+
+env:
+  DATABASE_URL: file:./bot.db
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Generate a reply for a watched post
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: npm run x-engagement:generate
+
+      - name: Persist bot database
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prisma/bot.db
+          git diff --cached --quiet || git commit -m "chore(bot): update state after x-engagement generate [skip ci]"
+          git pull --rebase --autostash
+          git push
