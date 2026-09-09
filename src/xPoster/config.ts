@@ -36,6 +36,9 @@ export interface XPosterConfig {
   // 記事URL付き投稿(2ツイート構成のスレッド)を1日に何件まで許可するか。
   // 公開中の記事が複数あっても、この件数を超えて生成しない。
   urlPostsPerDay: number;
+  // 投稿生成時に「直近よく使われている言葉」ヒントとして渡す、トレンドワードの件数
+  // (src/xPoster/trendWords.ts、npm run x-post:collect-trendsが収集したもの)。
+  trendWordsLimit: number;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), "config/x-poster.json");

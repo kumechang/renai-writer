@@ -2,6 +2,7 @@ import { loadPromptTemplate, loadConfigDoc, renderPrompt } from "./promptLoader"
 import { callClaude } from "./claudeClient";
 import { buildFeedbackHint } from "./feedbackHint";
 import { buildVarietyHint } from "./varietyHint";
+import { buildTrendHint } from "./trendWords";
 
 // 記事本文が長いため、プロンプトに渡すのは冒頭の抜粋のみにする
 // (有料部分マーカー以降はネタバレになりうるため含めない)。
@@ -32,6 +33,7 @@ export interface GeneratePostInput {
   charLimit: number;
   recentFeedbackWindow: number;
   recentPostsForVarietyWindow: number;
+  trendWordsLimit: number;
 }
 
 // パイプライン第1段階: 記事を紹介するX投稿の本文をClaudeに生成させる。
@@ -47,6 +49,7 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
 
   const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
   const varietyHint = await buildVarietyHint({ articleId: input.articleId }, input.recentPostsForVarietyWindow);
+  const trendHint = await buildTrendHint(input.trendWordsLimit);
 
   // 未公開のうちはURLを渡されていても使わない(公開先が無いため)。
   const effectiveUrl = input.published ? input.articleUrl : undefined;
@@ -72,6 +75,7 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
     char_limit_note: `投稿本文は全角${targetChars}文字程度を目標にし、絶対に全角${input.charLimit}文字を超えないでください。超えそうな場合は表現を削って短くしてください。`,
     feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
     variety_hint: varietyHint ?? "(この記事からの投稿はまだありません)",
+    trend_hint: trendHint ?? "(トレンドワードは未収集です)",
   });
 
   const text = await callClaude(model, prompt);

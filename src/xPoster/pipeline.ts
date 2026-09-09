@@ -121,6 +121,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
       charLimit: config.xCharLimit,
       recentFeedbackWindow: config.recentFeedbackWindow,
       recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+      trendWordsLimit: config.trendWordsLimit,
     });
 
   const runSelfCheckFor = (generatedText: string): Promise<{ raw: string; data: SelfCheckResult }> =>
@@ -193,6 +194,7 @@ async function generateStandaloneThreadPost(config: XPosterConfig, repo: Repo): 
       charLimit: config.xCharLimit,
       recentFeedbackWindow: config.recentFeedbackWindow,
       recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+      trendWordsLimit: config.trendWordsLimit,
     });
 
   const runSelfCheckFor = (hook: string, payoff: string) =>
@@ -278,6 +280,7 @@ async function tryGenerateUrlThreadPost(
       charLimit: config.xCharLimit,
       recentFeedbackWindow: config.recentFeedbackWindow,
       recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+      trendWordsLimit: config.trendWordsLimit,
     });
 
   const runSelfCheckFor = (hook: string, payoff: string) =>

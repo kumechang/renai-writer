@@ -260,6 +260,18 @@ model PostingTimeWeight {
   updatedAt DateTime @updatedAt
 }
 
+// ジャンル(恋愛)内でよく使われているハッシュタグ・言葉の直近スナップショット。
+// X投稿生成時に「今よく使われている言葉」のヒントとして使う(公式のトレンドAPIは
+// Proティア以上が必要で利用できないため、自前の投稿検索から代用の情報を作る。
+// src/xPoster/trendWords.ts)。1回の収集(collectTrendWords)ごとに既存の行を
+// 全て入れ替える(常に最新のスナップショットだけを保持すればよく、履歴は持たない)。
+model TrendWord {
+  id          String   @id @default(cuid())
+  word        String
+  occurrences Int
+  capturedAt  DateTime @default(now())
+}
+
 // エンゲージメント施策(「フォロワー1万人以上の憧れのアカウント」をフォロー・通知オンし、
 // 投稿直後に心のこもったリプライを返す)でウォッチする対象アカウント。
 // config/x-watch-accounts.jsonで運用者が5〜10件程度登録する想定。

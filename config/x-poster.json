@@ -14,5 +14,6 @@
   "recentFeedbackWindow": 10,
   "standalonePostRatio": 0.3,
   "recentPostsForVarietyWindow": 5,
-  "urlPostsPerDay": 1
+  "urlPostsPerDay": 1,
+  "trendWordsLimit": 8
 }

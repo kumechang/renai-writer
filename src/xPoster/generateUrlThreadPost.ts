@@ -4,6 +4,7 @@ import { callClaudeJson } from "./jsonRetry";
 import { buildArticleExcerpt } from "./generatePost";
 import { buildFeedbackHint } from "./feedbackHint";
 import { buildVarietyHint } from "./varietyHint";
+import { buildTrendHint } from "./trendWords";
 
 export const urlThreadPostSchema = z.object({
   hook: z.string().min(1, "hook must not be empty"),
@@ -19,6 +20,7 @@ export interface GenerateUrlThreadPostInput {
   charLimit: number;
   recentFeedbackWindow: number;
   recentPostsForVarietyWindow: number;
+  trendWordsLimit: number;
 }
 
 // 公開済み記事を、記事URL付きの2ツイート構成(スレッド)で紹介する投稿を生成する。
@@ -34,6 +36,7 @@ export async function generateUrlThreadPost(
 
   const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
   const varietyHint = await buildVarietyHint({ articleId: input.articleId }, input.recentPostsForVarietyWindow);
+  const trendHint = await buildTrendHint(input.trendWordsLimit);
 
   const prompt = renderPrompt(template, {
     account_info: accountInfo,
@@ -44,6 +47,7 @@ export async function generateUrlThreadPost(
       `${input.charLimit}文字を超えないでください(2件目は記事URL追加分の余白を残してください)。`,
     feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
     variety_hint: varietyHint ?? "(この記事からの投稿はまだありません)",
+    trend_hint: trendHint ?? "(トレンドワードは未収集です)",
   });
 
   const { data } = await callClaudeJson(model, prompt, urlThreadPostSchema);

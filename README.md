@@ -313,18 +313,33 @@ ANTHROPIC_API_KEY=sk-ant-... GITHUB_TOKEN=... GITHUB_REPOSITORY=kumechang/renai-
 手動実行できる。記事の完成（`npm run console -- check`）に自動連動はしていない
 （コンソール駆動フローのAnthropic API費用ゼロという前提を崩さないため、意図的に分離している）。
 
+### トレンドワードの活用
+
+X APIの公式トレンド機能(`GET /2/trends/by/woeid`)はProティア以上($5,000/月)が
+必要で利用できないため、代わりに`config/x-trend-words.json`の恋愛ジャンルの検索語で
+Xの直近投稿を検索し、よく使われているハッシュタグを自前で集計する
+(`src/xPoster/trendWords.ts`、discoverAccounts.tsと同じ投稿検索エンドポイントを使う)。
+
+`npm run x-post:collect-trends`(`.github/workflows/x-post-collect-trends.yml`、
+4時間おき)が収集し、`TrendWord`として保存する(1回の収集ごとに全件入れ替える)。
+投稿生成時(`generatePost.ts`/`generateStandalonePost.ts`/`generateUrlThreadPost.ts`)
+は、これを「直近よく使われている言葉」ヒントとしてプロンプトに渡す。無理に使わせる
+ものではなく、自然に絡められそうな場合だけ使うようライターに指示している。件数は
+`config/x-poster.json`の`trendWordsLimit`(既定8件)で調整する。
+
 ### 設定・関連コマンド
 
 設定は `config/x-poster.json`（承認モード・使用モデル・文字数上限・1日の目標投稿数・
 投稿可能時間帯・再宣伝までの日数・単発投稿の比率(`standalonePostRatio`)・記事URL付き投稿の
-1日の上限(`urlPostsPerDay`)など）と `config/x_account_info.md`（Xアカウントのペルソナ・
-トーン）で調整する。
+1日の上限(`urlPostsPerDay`)・トレンドワードの件数(`trendWordsLimit`)など）と
+`config/x_account_info.md`（Xアカウントのペルソナ・トーン）で調整する。
 
 ```bash
 npm run x-post:generate               # 投稿文生成(自動選択 or --issue指定)
 npm run x-post:handle-approval        # 承認issueへのコメント処理(Actions経由での実行を想定)
 npm run x-post:collect-metrics        # 投稿済みツイートのエンゲージメント取得
 npm run x-post:analyze-posting-times  # エンゲージメント実績から時間帯ごとの投稿重みを算出
+npm run x-post:collect-trends         # ジャンル内のトレンドワードを収集
 ```
 
 必要な環境変数（`X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_SECRET`）は

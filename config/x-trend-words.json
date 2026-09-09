@@ -1,0 +1,12 @@
+{
+  "searchQueries": [
+    "恋愛 lang:ja -is:retweet",
+    "婚活 lang:ja -is:retweet",
+    "失恋 lang:ja -is:retweet",
+    "片思い lang:ja -is:retweet",
+    "復縁 lang:ja -is:retweet",
+    "未練 lang:ja -is:retweet"
+  ],
+  "maxWords": 15,
+  "minOccurrences": 3
+}

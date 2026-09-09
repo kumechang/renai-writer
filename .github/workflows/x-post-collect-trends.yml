@@ -1,0 +1,57 @@
+name: X Post - Collect Trend Words
+
+# ジャンル(恋愛)の投稿検索から、よく使われているハッシュタグをTrendWordとして収集する。
+# 公式のトレンドAPIはProティア以上が必要で使えないため、代わりに自前で作る代用の
+# トレンド情報(src/xPoster/trendWords.ts)。生成された投稿は、これを「無理に使う必要は
+# ない」ヒントとして参照する(generatePost.ts等)。
+#
+# トレンドは数時間単位でしか動かないため、x-engagement-collectほどの頻度は不要。
+# 4時間おきに実行する(insurance目的のnative scheduleのみで十分。外部cronサービスに
+# 切り替えたい場合はx-post-generate.ymlと同じ方式でworkflow_dispatchを叩けばよい)。
+
+on:
+  schedule:
+    # 4時間おき。0分ちょうどは混雑回避のため7分ずらす。
+    - cron: "7 */4 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: console-state
+  cancel-in-progress: false
+
+env:
+  DATABASE_URL: file:./bot.db
+
+jobs:
+  collect-trends:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Collect trend words
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+        run: npm run x-post:collect-trends
+
+      - name: Persist bot database
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prisma/bot.db
+          git diff --cached --quiet || git commit -m "chore(bot): update state after x-post trend word collection [skip ci]"
+          git pull --rebase --autostash
+          git push

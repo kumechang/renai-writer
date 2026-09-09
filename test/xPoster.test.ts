@@ -16,6 +16,12 @@ import type { XPosterConfig } from "../src/xPoster/config";
 import { buildVarietyHint } from "../src/xPoster/varietyHint";
 import { hasReachedDailyUrlPostLimit, findUrlThreadCandidate } from "../src/xPoster/urlThreadCandidate";
 import * as articlePublication from "../src/xPoster/articlePublication";
+import {
+  extractHashtags,
+  aggregateTrendWords,
+  buildTrendHint,
+  type TrendWordsConfig,
+} from "../src/xPoster/trendWords";
 
 // findUrlThreadCandidateはGitHub API(記事issueの状態・最後のコメント)に依存するため、
 // その境界(articlePublication.ts)をモックしてDB側のロジックだけをテストする。
@@ -700,5 +706,76 @@ describe("isWithinPostingWindow", () => {
 
   it("is false before the window opens", () => {
     expect(isWithinPostingWindow(new Date("2026-01-01T06:00:00+09:00"), config)).toBe(false); // JST 06:00
+  });
+});
+
+describe("extractHashtags", () => {
+  it("extracts multiple hashtags from a post", () => {
+    expect(extractHashtags("今日は #失恋 と #未練 について書いた")).toEqual(["#失恋", "#未練"]);
+  });
+
+  it("returns an empty array when there are no hashtags", () => {
+    expect(extractHashtags("ハッシュタグなしの投稿です")).toEqual([]);
+  });
+
+  it("does not merge adjacent hashtags separated by whitespace", () => {
+    expect(extractHashtags("#恋愛 #婚活")).toEqual(["#恋愛", "#婚活"]);
+  });
+});
+
+describe("aggregateTrendWords", () => {
+  const config: TrendWordsConfig = {
+    searchQueries: ["恋愛 lang:ja"],
+    maxWords: 10,
+    minOccurrences: 2,
+  };
+
+  it("counts a hashtag once per post even if repeated within it", () => {
+    const result = aggregateTrendWords(["#失恋 つらい #失恋", "#失恋 わかる"], config);
+    expect(result).toEqual([{ word: "#失恋", occurrences: 2 }]);
+  });
+
+  it("excludes hashtags below minOccurrences", () => {
+    const result = aggregateTrendWords(["#失恋 つらい", "#婚活 頑張る"], config);
+    expect(result).toEqual([]);
+  });
+
+  it("sorts by occurrences descending and truncates to maxWords", () => {
+    const smallConfig: TrendWordsConfig = { ...config, maxWords: 1, minOccurrences: 1 };
+    const result = aggregateTrendWords(["#低頻度 投稿", "#高頻度 1", "#高頻度 2"], smallConfig);
+    expect(result).toEqual([{ word: "#高頻度", occurrences: 2 }]);
+  });
+});
+
+describe("buildTrendHint", () => {
+  beforeEach(async () => {
+    await prisma.trendWord.deleteMany();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("returns null when no trend words have been collected", async () => {
+    expect(await buildTrendHint(8)).toBeNull();
+  });
+
+  it("includes the top words sorted by occurrences", async () => {
+    await prisma.trendWord.create({ data: { word: "#失恋", occurrences: 5 } });
+    await prisma.trendWord.create({ data: { word: "#婚活", occurrences: 10 } });
+
+    const hint = await buildTrendHint(8);
+    expect(hint).toContain("#婚活");
+    expect(hint).toContain("#失恋");
+    expect(hint?.indexOf("#婚活")).toBeLessThan(hint?.indexOf("#失恋") ?? -1);
+  });
+
+  it("respects the limit", async () => {
+    await prisma.trendWord.create({ data: { word: "#a", occurrences: 3 } });
+    await prisma.trendWord.create({ data: { word: "#b", occurrences: 2 } });
+
+    const hint = await buildTrendHint(1);
+    expect(hint).toContain("#a");
+    expect(hint).not.toContain("#b");
   });
 });
