@@ -42,6 +42,15 @@ describe("buildReplyConsolePrompt", () => {
     expect(prompt).not.toContain("<!--");
     expect(prompt).not.toContain("-->");
   });
+
+  it("includes the self-check criteria so drafting and checking happen in one prompt", () => {
+    const prompt = buildReplyConsolePrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+    });
+    expect(prompt).toContain("チェック項目");
+  });
 });
 
 describe("buildReplyReviewPrompt", () => {
@@ -95,17 +104,35 @@ describe("buildReplyPromptIssueBody", () => {
     expect(body).toContain("料金は発生しません");
   });
 
-  it("includes both the generation prompt and the review prompt, and neither leaks the HTML comment", () => {
+  it("includes only one prompt (draft + self-check merged), so there is a single copy step", () => {
     const body = buildReplyPromptIssueBody({
       authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       postUrl: "https://x.com/example_account/status/123",
       charLimit: 280,
     });
-    expect(body).toContain("リプライ案の作成");
-    expect(body).toContain("レビュー用プロンプト");
+    expect(body).toContain("チェック項目");
     expect(body).not.toContain("<!--");
     expect(body).not.toContain("-->");
+  });
+
+  it("wraps the prompt in a fence longer than the ``` used inside it, so the prompt is not split mid-way", () => {
+    const body = buildReplyPromptIssueBody({
+      authorUsername: "example_account",
+      // 投稿本文自体にも```を含むケース(通常のツイート本文はこう書かれないが、
+      // フェンスの入れ子が正しく処理されているかを確認するため意図的に含める)。
+      postText: "最近こんなことを考えている、という投稿。",
+      postUrl: "https://x.com/example_account/status/123",
+      charLimit: 280,
+    });
+    // プロンプト本文は投稿本文を```で囲んでいる。issue側のフェンス(````)が
+    // それより長いことで、内側の```によって外側のフェンスが途中で閉じられない。
+    const outerFenceCount = body.split("````").length - 1;
+    expect(outerFenceCount).toBe(2);
+    const betweenFences = body.split("````")[1];
+    expect(betweenFences).toContain("```");
+    expect(betweenFences).toContain("最近こんなことを考えている、という投稿。");
+    expect(betweenFences).toContain("チェック項目");
   });
 });
 

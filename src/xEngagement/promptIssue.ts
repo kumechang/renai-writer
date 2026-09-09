@@ -1,7 +1,13 @@
 import { createIssue, type CreatedIssue } from "../lib/github";
-import { buildReplyConsolePrompt, buildReplyReviewPrompt } from "./replyConsolePrompt";
+import { buildReplyConsolePrompt } from "./replyConsolePrompt";
 
 export const X_ENGAGEMENT_PROMPT_LABEL = "x-engagement-reply-prompt";
+
+// プロンプト自体が投稿本文を```で囲んでいるため、issue本文側でも```で囲むと
+// 内側の```がそこでコードブロックを閉じてしまい、GitHub上でプロンプトが途中で
+// 分割されて表示され、1回でコピーできなくなる。内側(3個)より長いフェンスを
+// 使うことで、内側の```を素通りさせて外側だけを閉じるようにする。
+const ISSUE_CODE_FENCE = "````";
 
 export interface ReplyPromptIssueContent {
   authorUsername: string;
@@ -12,19 +18,12 @@ export interface ReplyPromptIssueContent {
 
 // issue本文を組み立てる。対象の投稿とClaude.aiに貼り付けるプロンプトをひとまとめにし、
 // 運用者がこのissueだけを見てリプライを検討・投稿できるようにする。
-// 1つ目(生成用)のプロンプトで案を作ったあと、2つ目(レビュー用)のプロンプトに自分の
-// リプライ案を貼り付けて、投稿前にもう一度チェックできるようにしている。
+// 案の作成とセルフチェックを1つのプロンプトに統合しているため、コピー&ペーストは1回で済む。
 export function buildReplyPromptIssueBody(content: ReplyPromptIssueContent): string {
-  const generatePrompt = buildReplyConsolePrompt({
+  const prompt = buildReplyConsolePrompt({
     authorUsername: content.authorUsername,
     postText: content.postText,
     charLimit: content.charLimit,
-  });
-  const reviewPrompt = buildReplyReviewPrompt({
-    authorUsername: content.authorUsername,
-    postText: content.postText,
-    charLimit: content.charLimit,
-    draftReply: "",
   });
 
   return [
@@ -36,24 +35,14 @@ export function buildReplyPromptIssueBody(content: ReplyPromptIssueContent): str
     content.postText,
     "```",
     "",
-    "## 1. Claude.aiのチャットに貼り付けるプロンプト(リプライ案の作成)",
+    "## Claude.aiのチャットに貼り付けるプロンプト",
     "",
     "以下をコピーして [Claude.ai](https://claude.ai) のチャット画面に貼り付けてください" +
       "(Claude APIは呼ばないため、料金は発生しません)。",
     "",
-    "```",
-    generatePrompt,
-    "```",
-    "",
-    "## 2. レビュー用プロンプト(投稿前のチェック、任意)",
-    "",
-    "作ったリプライ案を投稿前にもう一度チェックしたい場合は、以下のプロンプト中の" +
-      "「（ここに、投稿しようとしているリプライ文を貼ってください）」をリプライ案に" +
-      "置き換えてから、Claude.aiのチャットに貼り付けてください。",
-    "",
-    "```",
-    reviewPrompt,
-    "```",
+    ISSUE_CODE_FENCE,
+    prompt,
+    ISSUE_CODE_FENCE,
     "",
     "---",
     "返信文が決まったら、Xアプリ等から手動でリプライを投稿し、このissueをクローズしてください。",
