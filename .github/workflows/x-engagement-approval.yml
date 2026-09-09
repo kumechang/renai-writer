@@ -32,6 +32,8 @@ jobs:
       github.event.comment.user.login != 'github-actions[bot]'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/setup-node@v4
         with:
