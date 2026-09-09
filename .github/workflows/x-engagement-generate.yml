@@ -17,8 +17,11 @@ name: X Engagement - Generate Reply
 
 on:
   schedule:
-    # 30分おき(保険。上記の通り遅延・スキップされうる)。
-    - cron: "8,38 * * * *"
+    # 1日1回(保険)。cron-job.orgが正常に動いている限りこちらは実行されない想定だが、
+    # cron-job.org自体が丸ごと止まった場合の最終防衛ラインとして残す。以前は30分おきに
+    # していたが、x-engagement-collectと同じ理由(cron-job.orgとの二重発火によるbot.db
+    # push時のレース)で頻度を落とした。
+    - cron: "43 3 * * *"
   workflow_dispatch: {}
 
 permissions:
