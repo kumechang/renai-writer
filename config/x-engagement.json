@@ -1,15 +1,3 @@
 {
-  "approvalMode": "auto",
-  "claudeModel": "claude-sonnet-5",
-  "xCharLimit": 280,
-  "selfCheckPassThreshold": 75,
-  "maxGenerateRetries": 2,
-  "maxRepliesPerDay": 5,
-  "replyWindow": {
-    "startHour": 7,
-    "endHour": 24
-  },
-  "minSpacingMinutes": 20,
-  "recentFeedbackWindow": 10,
-  "maxPostAgeMinutes": 180
+  "xCharLimit": 280
 }

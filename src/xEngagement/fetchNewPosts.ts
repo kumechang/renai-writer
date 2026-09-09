@@ -1,7 +1,10 @@
 import { prisma } from "../db/client";
 import { getXClient } from "../xPoster/xClient";
 import { hasXCredentials } from "../xPoster/env";
+import { parseGithubRepository } from "../xPoster/env";
 import { syncWatchedAccounts } from "./syncWatchedAccounts";
+import { loadXEngagementConfig } from "./config";
+import { createReplyPromptIssue } from "./promptIssue";
 
 // 直近検索で1回に取得する最大件数(X APIの上限)。ウォッチ対象全アカウント分の投稿を
 // まとめて取得するため、余裕を持って上限いっぱいにしておく。
@@ -16,6 +19,7 @@ const SAFE_QUERY_LENGTH = 480;
 export interface FetchNewPostsResult {
   accountsChecked: number;
   newPosts: number;
+  issuesCreated: number;
 }
 
 // ウォッチ対象アカウント(config/x-watch-accounts.jsonと同期済みのWatchedAccount)全員の
@@ -24,6 +28,10 @@ export interface FetchNewPostsResult {
 // いないものをWatchedPostとして新規作成する。アカウントを1人ずつ呼び出す方式
 // (userTimeline)だとアカウント数に比例してAPI呼び出し数が増えてしまうため、
 // discoverAccounts.tsと同じ投稿検索エンドポイントをまとめて使う方式にしている。
+//
+// 新着投稿を見つけ次第、件数を気にせずGitHub issue(Claude.aiのチャットに貼り付ける
+// リプライ検討プロンプト)を作る。Claude APIは呼ばないため、issueを何件作っても
+// API使用量は増えない(src/xEngagement/promptIssue.ts)。
 // X APIキー未設定の場合は何もせず終える(ドライラン運用中でもエラーで落とさないため)。
 export async function fetchNewPosts(): Promise<FetchNewPostsResult> {
   const accounts = await syncWatchedAccounts();
@@ -31,10 +39,10 @@ export async function fetchNewPosts(): Promise<FetchNewPostsResult> {
 
   if (!hasXCredentials()) {
     console.warn("[x-engagement] X API credentials not configured, skipping fetch");
-    return { accountsChecked: 0, newPosts: 0 };
+    return { accountsChecked: 0, newPosts: 0, issuesCreated: 0 };
   }
   if (activeAccounts.length === 0) {
-    return { accountsChecked: 0, newPosts: 0 };
+    return { accountsChecked: 0, newPosts: 0, issuesCreated: 0 };
   }
 
   const accountByUsername = new Map(activeAccounts.map((a) => [a.username.toLowerCase(), a]));
@@ -55,7 +63,11 @@ export async function fetchNewPosts(): Promise<FetchNewPostsResult> {
     "user.fields": ["username"],
   });
 
+  const config = loadXEngagementConfig();
+  const repo = parseGithubRepository();
+
   let newPosts = 0;
+  let issuesCreated = 0;
   for (const tweet of result.tweets) {
     const author = result.includes.author(tweet);
     const account = author ? accountByUsername.get(author.username.toLowerCase()) : undefined;
@@ -64,7 +76,7 @@ export async function fetchNewPosts(): Promise<FetchNewPostsResult> {
     const existing = await prisma.watchedPost.findUnique({ where: { tweetId: tweet.id } });
     if (existing) continue;
 
-    await prisma.watchedPost.create({
+    const post = await prisma.watchedPost.create({
       data: {
         watchedAccountId: account.id,
         tweetId: tweet.id,
@@ -73,7 +85,28 @@ export async function fetchNewPosts(): Promise<FetchNewPostsResult> {
       },
     });
     newPosts += 1;
+
+    if (repo && process.env.GITHUB_TOKEN) {
+      const postUrl = `https://x.com/${account.username}/status/${tweet.id}`;
+      const issue = await createReplyPromptIssue(repo.owner, repo.repo, {
+        authorUsername: account.username,
+        postText: tweet.text,
+        postUrl,
+        charLimit: config.xCharLimit,
+      });
+      await prisma.watchedPost.update({
+        where: { id: post.id },
+        data: {
+          status: "prompted",
+          githubIssueOwner: repo.owner,
+          githubIssueRepo: repo.repo,
+          githubIssueNumber: issue.number,
+          githubIssueUrl: issue.url,
+        },
+      });
+      issuesCreated += 1;
+    }
   }
 
-  return { accountsChecked: activeAccounts.length, newPosts };
+  return { accountsChecked: activeAccounts.length, newPosts, issuesCreated };
 }

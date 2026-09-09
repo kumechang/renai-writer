@@ -288,6 +288,11 @@ model WatchedAccount {
 }
 
 // ウォッチ対象アカウントの投稿。新着を検知するたびに1件作り、リプライ生成の対象にする。
+// ウォッチ対象アカウントの投稿。新着を検知するたびに1件作り、リプライ検討issueの対象にする。
+// リプライ文はClaude APIには生成させず、GitHub issueに「Claude.aiのチャットに貼り付ける
+// プロンプト」を書くだけにする(API使用量を気にせず、新着を見つけ次第issueを作れるように
+// するため。src/xEngagement/replyConsolePrompt.ts)。issue作成後、実際にどう返信するか・
+// 投稿したかどうかは運用者がissue上で判断する(承認/却下のような自動判定は行わない)。
 model WatchedPost {
   id               String         @id @default(cuid())
   watchedAccountId String
@@ -297,52 +302,16 @@ model WatchedPost {
   text     String
   postedAt DateTime
 
-  // new: 未対応 / processing: リプライ生成中〜承認待ち(EngagementReply参照) /
-  // drafted: リプライ文の下書きが確定した(実際の投稿は運用者がXアプリ等から手動で行う。
-  // X APIの自動化ルール上、自分宛てのメンションでない投稿への自動リプライはできないため) /
-  // skipped: 対象外(投稿から時間が経ちすぎたなど)
+  // new: 未対応 / prompted: リプライ検討issueを作成済み / skipped: 対象外
   status String @default("new")
-
-  reply EngagementReply?
-
-  createdAt DateTime @default(now())
-
-  @@index([watchedAccountId])
-}
-
-// ウォッチ対象の投稿に対して生成した「心のこもった(かつ有益な)」リプライの下書き。
-// GitHub issueでの人による確認を経て文面を確定するが、投稿自体はX APIの自動化ルール
-// (自分宛てのメンションでない投稿への自動リプライを禁止)に抵触するため行わない。
-// 確定した文面は、運用者がXアプリ等から手動で投稿する想定(承認フローの構成自体は
-// src/xPosterのものを踏襲している)。
-model EngagementReply {
-  id            String      @id @default(cuid())
-  watchedPostId String      @unique
-  watchedPost   WatchedPost @relation(fields: [watchedPostId], references: [id], onDelete: Cascade)
-
-  generatedText String
-  // セルフチェック後の最終リプライ文(不合格なら修正済み)。運用者が手動投稿する際に使うのはこちら。
-  finalText     String
-  selfCheckJson String?
-
-  // pending_approval -> approved(下書き確定、手動投稿待ち) / rejected
-  status String @default("pending_approval")
 
   githubIssueOwner  String?
   githubIssueRepo   String?
   githubIssueNumber Int?
   githubIssueUrl    String?
 
-  approvedBy      String?
-  rejectedBy      String?
-  rejectionReason String?
-
-  // 投稿後(承認前も含む)に運用者がissueへ残した「気になる」コメントの蓄積。
-  // 次回以降のリプライ生成時に「避けるべき方向性」のヒントとして使う。
-  feedbackNotes String?
-  feedbackBy    String?
-  feedbackAt    DateTime?
-
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  @@index([watchedAccountId])
 }
+

@@ -349,15 +349,23 @@ npm run x-post:collect-trends         # ジャンル内のトレンドワード�
 
 業者に頼らずフォロワーを増やす方法として、「同じジャンルでフォロワー1万人以上の憧れの
 アカウントを5〜10人フォローし、通知オンにして、投稿直後に心のこもった（かつ有益な）
-リプライを毎日3〜5回返す」というアドバイスがある。これをXの新着投稿の検知・
-リプライ文の下書き作成まで自動化した仕組み（`src/xEngagement/`）。
+リプライを毎日3〜5回返す」というアドバイスがある。これをXの新着投稿の検知まで
+自動化した仕組み（`src/xEngagement/`）。
 
-**実際のXへの投稿は自動化していない。** X APIの自動化ルール（[X's automation
-development rules](https://help.x.com/en/rules-and-policies/x-automation)）は、
-自分のアカウントがメンションされていない他アカウントの投稿への自動リプライを禁止して
-おり、ウォッチ対象アカウントの投稿は当然これに該当する。そのため、`## X投稿`（完成記事の
-告知）とは異なり、この機能はGitHub issueに「心のこもったリプライ案」を下書きとして
-用意するところまでで、実際の投稿は運用者がXアプリ等から手動で行う。
+**リプライ文の生成・投稿はどちらも自動化していない。**
+
+- 投稿: X APIの自動化ルール（[X's automation development
+  rules](https://help.x.com/en/rules-and-policies/x-automation)）は、自分の
+  アカウントがメンションされていない他アカウントの投稿への自動リプライを禁止しており、
+  ウォッチ対象アカウントの投稿は当然これに該当する。
+- 生成: 当初はClaude APIでリプライ文を自動生成していたが、API使用量を気にせず
+  件数を絞らずに運用したいという要望から、Claude APIは呼ばない方式に変更した。
+
+そのため今の仕組みは、新着投稿を見つけたら**GitHub issueに「Claude.aiのチャット画面に
+貼り付けるプロンプト」を書くところまで**で終わる。実際にどう返信するか考えるのも、
+Xへの投稿も、どちらも運用者が手動で行う（`src/agents/researcher/`等で使っている
+「コンソール駆動」と同じ考え方。Claude.aiのチャット利用は課金APIではないため、
+issueを何件作っても追加コストは発生しない）。
 
 ### セットアップ
 
@@ -387,57 +395,45 @@ development rules](https://help.x.com/en/rules-and-policies/x-automation)）は�
 `config/x-watch-accounts.json`に追記する（DBを使わない読み取り専用の処理のため、
 他のx-engagement-*ワークフローと違いprisma migrate deployは不要）。
 
+**検索結果には注意すること。** 同じ単語を含む無関係なアカウント（占い師・小説家・
+マッチングアプリ事業者など隣接ジャンル）が混じるのはもちろん、アダルト系・
+ゴシップ系アカウントが紛れ込むこともある（実際に発生した）。`config/x-watch-accounts.json`
+への追記は必ず人の目でissueを確認してから行うこと。
+
 ```bash
 npm run x-engagement:discover
 ```
 
-### 検知・下書き作成・手動投稿の流れ
+### 新着投稿の検知とリプライ検討issue
 
-1. `npm run x-engagement:collect`（`.github/workflows/x-engagement-collect.yml`、
-   15分おき）が、ウォッチ対象アカウント全員分の新着投稿（リツイート・リプライを除く本人の
-   投稿）を、X APIの投稿検索（`from:user1 OR from:user2 OR ...`）で**1回のAPI呼び出しに
-   まとめて**取得し、`WatchedPost`として保存する（`src/xEngagement/fetchNewPosts.ts`。
-   discoverAccounts.tsと同じ投稿検索エンドポイントを使う。ここはAPIの読み取りのみで、
-   自動化ルールの制約対象外）。アカウントを1人ずつ呼び出す方式と違い、ウォッチ対象が
-   増えてもAPI呼び出し数自体は増えない（クエリ文字数の上限、目安で20アカウント程度に
-   達するまで）。
-   GitHub Actionsのscheduleは遅延・スキップされやすいため、外部のcronサービス
-   （cron-job.orgなど）から`workflow_dispatch` APIを叩く方式を主経路にすることを推奨する
-   （`x-post-generate.yml`と同じ方針。native scheduleは保険として残っている）。
-2. `npm run x-engagement:generate`（`.github/workflows/x-engagement-generate.yml`、
-   30分おき）が、未対応の投稿から1件選び、ライターのペルソナ（`config/x_account_info.md`、
-   X投稿と共通）でリプライ文をClaude APIに生成させる→セルフチェック→承認issue作成、
-   まで行う（`approvalMode: "auto"`ならセルフチェック合格時にその場で下書きを確定する）。
-   「投稿した瞬間に返す」という狙いを外さないよう、投稿から`maxPostAgeMinutes`
-   （既定180分）を超えた投稿は対象にしない。
-3. `npm run x-engagement:handle-approval`（`.github/workflows/x-engagement-approval.yml`、
-   `pending-x-engagement-approval`ラベル付きissueへの`issue_comment`）が、承認issueへの
-   「承認」「却下」コメント、またはそれ以外の自由記述（次回生成へのフィードバック）を処理する。
-   「承認」されると、issueに「この文面で手動投稿してください」というコメントが付いて
-   クローズされる。**運用者はここでissueに書かれた文面をコピーし、Xアプリ等から自分で
-   リプライを投稿する。**
+`npm run x-engagement:collect`（`.github/workflows/x-engagement-collect.yml`、
+主経路は外部cronサービスからの`workflow_dispatch`、既定15分おき。native scheduleは
+1日1回の保険）が、以下を行う（`src/xEngagement/fetchNewPosts.ts`）。
 
-### ペース制御
+1. ウォッチ対象アカウント全員分の新着投稿（リツイート・リプライを除く本人の投稿）を、
+   X APIの投稿検索（`from:user1 OR from:user2 OR ...`）で**1回のAPI呼び出しにまとめて**
+   取得する（discoverAccounts.tsと同じ投稿検索エンドポイントを使う。アカウントを1人ずつ
+   呼び出す方式と違い、ウォッチ対象が増えてもAPI呼び出し数自体は増えない。クエリ文字数の
+   上限、目安で20アカウント程度に達するまで）。
+2. まだ`WatchedPost`として保存していない投稿が見つかった場合、**件数を気にせずその場で**
+   GitHub issue（`x-engagement-reply-prompt`ラベル）を作る。issueには対象の投稿本文と、
+   Claude.aiのチャット画面にそのままコピー&ペーストできる「リプライ検討プロンプト」
+   （`src/xEngagement/replyConsolePrompt.ts`）を書く。Claude APIは呼ばないため、
+   何件issueを作ってもAPI使用量は増えない。
 
-「毎日3〜5回」というアドバイスに沿って、`config/x-engagement.json`の
-`maxRepliesPerDay`（既定5件）・`minSpacingMinutes`（既定20分、連投防止）・
-`replyWindow`（既定JST 7〜24時）で下書き生成の頻度を抑える。ワークフロー自体は高頻度
-（検知15分おき・生成30分おき）で起動するが、実際に下書きが作られるのはこのペース制御に
-従った回数だけになる。
-
-`config/x-poster.json`と同様、`approvalMode`（`manual` / `auto`）・使用モデル・
-文字数上限・セルフチェックの合格基準もここで調整する。
+運用者はissueを開き、プロンプトをClaude.aiのチャットに貼り付けて返信文を考えてもらい、
+気に入った文面ができたらXアプリ等から手動でリプライを投稿し、issueをクローズする。
+「良いリプライ案が思いつきません」という返答だった場合（対象投稿がリンク先の画像などで
+本文だけでは中身が分からない場合など）は、リプライを見送ってクローズしてよい。
 
 ```bash
-npm run x-engagement:discover         # ウォッチ候補アカウントをX検索から探してissueにまとめる
-npm run x-engagement:collect          # ウォッチ対象アカウントの新着投稿を取得
-npm run x-engagement:generate         # 未対応の投稿からリプライ文の下書きを生成(自動選択)
-npm run x-engagement:handle-approval  # 承認issueへのコメント処理(Actions経由での実行を想定)
+npm run x-engagement:discover  # ウォッチ候補アカウントをX検索から探してissueにまとめる
+npm run x-engagement:collect   # ウォッチ対象アカウントの新着投稿を検知し、リプライ検討issueを作る
 ```
 
-必要な環境変数はX投稿の仕組みと共通（`ANTHROPIC_API_KEY` / `GITHUB_TOKEN` /
-`GITHUB_REPOSITORY` / `X_API_KEY` 等、`.env.example`参照）。X APIキーは新着投稿の取得
-（読み取り）と`x-engagement:discover`での検索にのみ使い、リプライの投稿には使わない。
+必要な環境変数は`GITHUB_TOKEN` / `GITHUB_REPOSITORY` / `X_API_KEY`等（`.env.example`参照）。
+`ANTHROPIC_API_KEY`は不要（Claude APIを呼ばないため）。X APIキーは新着投稿の取得
+（読み取り）と`x-engagement:discover`での検索にのみ使い、投稿には使わない。
 
 ## テスト
 

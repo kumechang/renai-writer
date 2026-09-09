@@ -2,9 +2,10 @@ name: X Engagement - Collect
 
 # config/x-watch-accounts.jsonに登録したウォッチ対象アカウント(「フォロワー1万人以上の
 # 憧れのアカウント」5〜10件)の新着投稿をX APIから取得し、WatchedPostとして保存する。
-# 「彼らが投稿した瞬間に」リプライを返すというアドバイスの狙いに沿うよう、検知自体は
-# 高頻度(15分おき)で行う。実際のリプライ生成・投稿はx-engagement-generate.ymlが
-# 別ワークフローとして1日の上限に沿ったペースで行う。
+# 見つけ次第、件数を気にせずGitHub issue(Claude.aiのチャットに貼り付けるリプライ検討
+# プロンプト)を作る(src/xEngagement/promptIssue.ts)。Claude APIは呼ばないため、
+# issueを何件作ってもAPI使用量は増えない。実際にどう返信するか・投稿するかはissueを見た
+# 運用者が判断する(自動生成・自動承認は行わない)。
 #
 # ウォッチ対象アカウント全員分をX APIの投稿検索(`from:user1 OR from:user2 OR ...`)で
 # 1回のAPI呼び出しにまとめて取得する(src/xEngagement/fetchNewPosts.ts)ため、
@@ -25,6 +26,10 @@ on:
     # 二重に走らせる必要が無いため)。
     - cron: "13 3 * * *"
   workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
 
 concurrency:
   group: console-state
@@ -54,6 +59,8 @@ jobs:
 
       - name: Collect new posts from watched accounts
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}

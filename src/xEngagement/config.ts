@@ -2,32 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 export interface XEngagementConfig {
-  // manual: GitHub issueで人が「承認」とコメントするまで下書きを確定しない /
-  // auto: セルフチェック合格時に即座に下書きを確定する。
-  // どちらの場合も、実際にXへ投稿するのは運用者が手動で行う(X APIの自動化ルール上、
-  // 自分宛てのメンションでない投稿への自動リプライ投稿はできないため)。
-  approvalMode: "manual" | "auto";
-  claudeModel: string;
+  // リプライ検討プロンプトに書く文字数上限の目安(X投稿の全角文字数上限)。
   xCharLimit: number;
-  selfCheckPassThreshold: number;
-  // 文字数超過時、生成+セルフチェックをやり直す最大回数
-  maxGenerateRetries: number;
-
-  // 1日あたりのリプライ上限。「毎日3〜5回」というアドバイスに沿ってペースを抑える
-  // (数を追うより、1件ずつ心のこもったリプライを返すことを優先する)。
-  maxRepliesPerDay: number;
-  // ウォッチ対象の投稿を検知していて不自然でない時間帯(JST)。この範囲内でのみリプライを試みる。
-  replyWindow: {
-    startHour: number;
-    endHour: number;
-  };
-  // 直近のリプライ生成からこの時間(分)未満なら、次の生成をスキップする(連投防止)。
-  minSpacingMinutes: number;
-  // 直近の却下・事後フィードバックのうち、次回生成時のヒントとして渡す件数。
-  recentFeedbackWindow: number;
-  // 投稿からこの分数を超えて経過したものにはリプライしない(「投稿した瞬間に」返す
-  // というアドバイスの狙いを外さないため。古い投稿への今更のリプライは避ける)。
-  maxPostAgeMinutes: number;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), "config/x-engagement.json");

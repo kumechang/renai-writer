@@ -4,7 +4,7 @@ import { loadWatchAccountsConfig } from "./watchAccountsConfig";
 
 // config/x-watch-accounts.json の内容をWatchedAccountテーブルに反映する。
 // ファイルに無いアカウントは削除せずactive=falseにするだけに留める
-// (誤って外した場合でも、過去のWatchedPost/EngagementReplyの履歴を失わないため)。
+// (誤って外した場合でも、過去のWatchedPostの履歴を失わないため)。
 export async function syncWatchedAccounts(): Promise<WatchedAccount[]> {
   const entries = loadWatchAccountsConfig();
   const usernames = new Set(entries.map((e) => e.username));
