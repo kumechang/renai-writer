@@ -6,12 +6,21 @@ export interface ReplyConsolePromptInput {
   charLimit: number;
 }
 
+// config/x_account_info.mdの先頭にある編集用のHTMLコメント(「実際のアカウント運用方針に
+// 合わせて調整してください...」)は、ファイルを編集する運用者向けの注記であって、
+// Claude.aiに渡すプロンプトの一部ではないため取り除く。
+function loadAccountInfoForPrompt(): string {
+  return loadConfigDoc("x_account_info.md")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .trim();
+}
+
 // Claude.aiのチャット画面に人間が直接コピー&ペーストして実行するためのプロンプト。
 // Claude APIは呼ばない(API使用量を気にせず、新着投稿を見つけ次第issueを作れるようにする
 // ため)。src/agents/researcher/consolePrompt.tsと同じ「コンソール駆動」の考え方を、
 // リプライ検討に応用したもの。
 export function buildReplyConsolePrompt(input: ReplyConsolePromptInput): string {
-  const accountInfo = loadConfigDoc("x_account_info.md");
+  const accountInfo = loadAccountInfoForPrompt();
 
   return `あなたは、恋愛メディアの記事制作チームに所属する「ライター」です。中の人として
 Xを運用しています。
@@ -22,7 +31,7 @@ Xを運用しています。
 宣伝や自己紹介ではなく、その投稿の内容そのものに反応する、1人の読者・1人の発信者としての
 リプライを書いてください。
 
-# アカウント情報(あなた自身のペルソナ)
+# あなた自身のペルソナ
 
 ${accountInfo}
 
@@ -58,4 +67,56 @@ ${input.postText}
 
 リプライ本文のみを出力してください。前置き・説明・引用符・コードブロック記法は
 一切含めないでください。`;
+}
+
+export interface ReplyReviewPromptInput extends ReplyConsolePromptInput {
+  // 運用者(または最初のプロンプトの回答)が考えたリプライ案。空文字の場合は、
+  // issueに貼るテンプレートとして「ここに貼ってください」という案内に置き換わる。
+  draftReply: string;
+}
+
+const DRAFT_PLACEHOLDER = "（ここに、投稿しようとしているリプライ文を貼ってください）";
+
+// 自分(または最初のプロンプトの回答)が考えたリプライ案を、投稿前にもう一度
+// Claude.aiのチャットでレビューしてもらうためのプロンプト。buildReplyConsolePromptと
+// 同じ観点で、当たり障りのなさ・トーン・文字数などをチェックしてもらう。
+export function buildReplyReviewPrompt(input: ReplyReviewPromptInput): string {
+  const accountInfo = loadAccountInfoForPrompt();
+  const draftSection = input.draftReply.trim().length > 0 ? input.draftReply.trim() : DRAFT_PLACEHOLDER;
+
+  return `あなたはSNSリプライの品質チェック担当です。以下のリプライ案を、投稿する前に
+チェックしてください。
+
+# あなた(投稿主)のペルソナ
+
+${accountInfo}
+
+# リプライ対象の投稿
+
+投稿者: @${input.authorUsername}
+
+\`\`\`
+${input.postText}
+\`\`\`
+
+# チェックするリプライ案
+
+\`\`\`
+${draftSection}
+\`\`\`
+
+# チェック項目
+
+- 投稿の内容を実際に読んで反応していることが伝わるか(使い回しの相槌になっていないか)
+- 心がこもっているか(共感・具体的な視点が含まれているか)
+- 有益さ(読んだ人にとって何か気づき・視点があるか)
+- 自然な会話のトーンか(ペルソナと合っているか。媚びすぎ・へりくだりすぎていないか)
+- 宣伝・フォロー依頼など、返信の場にそぐわない内容が無いか
+- 「絶対に」「100%」などの断定・攻撃的な表現が無いか
+- 全角${input.charLimit}文字を超えていないか
+
+# 出力
+
+チェック結果を簡潔に述べたうえで、そのまま投稿できる最終版のリプライ文を1つ提示して
+ください。問題が無ければ元の文をそのまま最終版としてください。`;
 }

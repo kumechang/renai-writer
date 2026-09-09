@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadWatchAccountsConfig } from "../src/xEngagement/watchAccountsConfig";
-import { buildReplyConsolePrompt } from "../src/xEngagement/replyConsolePrompt";
+import { buildReplyConsolePrompt, buildReplyReviewPrompt } from "../src/xEngagement/replyConsolePrompt";
 import { buildReplyPromptIssueBody } from "../src/xEngagement/promptIssue";
 import { aggregateCandidates, type CandidateEntry, type DiscoveryConfig } from "../src/xEngagement/discoverAccounts";
 import { buildDiscoveryIssueBody } from "../src/xEngagement/discoveryIssue";
@@ -32,6 +32,52 @@ describe("buildReplyConsolePrompt", () => {
     });
     expect(prompt).toContain("良いリプライ案が思いつきません");
   });
+
+  it("does not leak the editor-only HTML comment from x_account_info.md", () => {
+    const prompt = buildReplyConsolePrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+    });
+    expect(prompt).not.toContain("<!--");
+    expect(prompt).not.toContain("-->");
+  });
+});
+
+describe("buildReplyReviewPrompt", () => {
+  it("includes the draft reply, target post, and char limit when a draft is given", () => {
+    const prompt = buildReplyReviewPrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "これめっちゃ分かります。自分も同じことを考えていました。",
+    });
+    expect(prompt).toContain("@example_account");
+    expect(prompt).toContain("最近こんなことを考えている、という投稿。");
+    expect(prompt).toContain("これめっちゃ分かります。自分も同じことを考えていました。");
+    expect(prompt).toContain("280文字");
+  });
+
+  it("shows a placeholder instead of the draft when none is given", () => {
+    const prompt = buildReplyReviewPrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "",
+    });
+    expect(prompt).toContain("ここに、投稿しようとしているリプライ文を貼ってください");
+  });
+
+  it("does not leak the editor-only HTML comment from x_account_info.md", () => {
+    const prompt = buildReplyReviewPrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "",
+    });
+    expect(prompt).not.toContain("<!--");
+    expect(prompt).not.toContain("-->");
+  });
 });
 
 describe("buildReplyPromptIssueBody", () => {
@@ -47,6 +93,19 @@ describe("buildReplyPromptIssueBody", () => {
     expect(body).toContain("https://x.com/example_account/status/123");
     expect(body).toContain("Claude.ai");
     expect(body).toContain("料金は発生しません");
+  });
+
+  it("includes both the generation prompt and the review prompt, and neither leaks the HTML comment", () => {
+    const body = buildReplyPromptIssueBody({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      postUrl: "https://x.com/example_account/status/123",
+      charLimit: 280,
+    });
+    expect(body).toContain("リプライ案の作成");
+    expect(body).toContain("レビュー用プロンプト");
+    expect(body).not.toContain("<!--");
+    expect(body).not.toContain("-->");
   });
 });
 

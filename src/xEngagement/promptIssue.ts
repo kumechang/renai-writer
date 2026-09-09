@@ -1,5 +1,5 @@
 import { createIssue, type CreatedIssue } from "../lib/github";
-import { buildReplyConsolePrompt } from "./replyConsolePrompt";
+import { buildReplyConsolePrompt, buildReplyReviewPrompt } from "./replyConsolePrompt";
 
 export const X_ENGAGEMENT_PROMPT_LABEL = "x-engagement-reply-prompt";
 
@@ -12,11 +12,19 @@ export interface ReplyPromptIssueContent {
 
 // issue本文を組み立てる。対象の投稿とClaude.aiに貼り付けるプロンプトをひとまとめにし、
 // 運用者がこのissueだけを見てリプライを検討・投稿できるようにする。
+// 1つ目(生成用)のプロンプトで案を作ったあと、2つ目(レビュー用)のプロンプトに自分の
+// リプライ案を貼り付けて、投稿前にもう一度チェックできるようにしている。
 export function buildReplyPromptIssueBody(content: ReplyPromptIssueContent): string {
-  const prompt = buildReplyConsolePrompt({
+  const generatePrompt = buildReplyConsolePrompt({
     authorUsername: content.authorUsername,
     postText: content.postText,
     charLimit: content.charLimit,
+  });
+  const reviewPrompt = buildReplyReviewPrompt({
+    authorUsername: content.authorUsername,
+    postText: content.postText,
+    charLimit: content.charLimit,
+    draftReply: "",
   });
 
   return [
@@ -28,13 +36,23 @@ export function buildReplyPromptIssueBody(content: ReplyPromptIssueContent): str
     content.postText,
     "```",
     "",
-    "## Claude.aiのチャットに貼り付けるプロンプト",
+    "## 1. Claude.aiのチャットに貼り付けるプロンプト(リプライ案の作成)",
     "",
     "以下をコピーして [Claude.ai](https://claude.ai) のチャット画面に貼り付けてください" +
       "(Claude APIは呼ばないため、料金は発生しません)。",
     "",
     "```",
-    prompt,
+    generatePrompt,
+    "```",
+    "",
+    "## 2. レビュー用プロンプト(投稿前のチェック、任意)",
+    "",
+    "作ったリプライ案を投稿前にもう一度チェックしたい場合は、以下のプロンプト中の" +
+      "「（ここに、投稿しようとしているリプライ文を貼ってください）」をリプライ案に" +
+      "置き換えてから、Claude.aiのチャットに貼り付けてください。",
+    "",
+    "```",
+    reviewPrompt,
     "```",
     "",
     "---",
