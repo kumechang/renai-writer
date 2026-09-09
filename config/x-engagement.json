@@ -9,7 +9,7 @@
     "startHour": 7,
     "endHour": 24
   },
-  "minSpacingMinutes": 20,
+  "minSpacingMinutes": 0,
   "recentFeedbackWindow": 10,
   "maxPostAgeMinutes": 180
 }
