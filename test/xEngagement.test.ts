@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadWatchAccountsConfig } from "../src/xEngagement/watchAccountsConfig";
-import { buildReplyConsolePrompt } from "../src/xEngagement/replyConsolePrompt";
+import { buildReplyConsolePrompt, buildReplyReviewPrompt } from "../src/xEngagement/replyConsolePrompt";
 import { buildReplyPromptIssueBody } from "../src/xEngagement/promptIssue";
 import { aggregateCandidates, type CandidateEntry, type DiscoveryConfig } from "../src/xEngagement/discoverAccounts";
 import { buildDiscoveryIssueBody } from "../src/xEngagement/discoveryIssue";
@@ -32,6 +32,61 @@ describe("buildReplyConsolePrompt", () => {
     });
     expect(prompt).toContain("良いリプライ案が思いつきません");
   });
+
+  it("does not leak the editor-only HTML comment from x_account_info.md", () => {
+    const prompt = buildReplyConsolePrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+    });
+    expect(prompt).not.toContain("<!--");
+    expect(prompt).not.toContain("-->");
+  });
+
+  it("includes the self-check criteria so drafting and checking happen in one prompt", () => {
+    const prompt = buildReplyConsolePrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+    });
+    expect(prompt).toContain("チェック項目");
+  });
+});
+
+describe("buildReplyReviewPrompt", () => {
+  it("includes the draft reply, target post, and char limit when a draft is given", () => {
+    const prompt = buildReplyReviewPrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "これめっちゃ分かります。自分も同じことを考えていました。",
+    });
+    expect(prompt).toContain("@example_account");
+    expect(prompt).toContain("最近こんなことを考えている、という投稿。");
+    expect(prompt).toContain("これめっちゃ分かります。自分も同じことを考えていました。");
+    expect(prompt).toContain("280文字");
+  });
+
+  it("shows a placeholder instead of the draft when none is given", () => {
+    const prompt = buildReplyReviewPrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "",
+    });
+    expect(prompt).toContain("ここに、投稿しようとしているリプライ文を貼ってください");
+  });
+
+  it("does not leak the editor-only HTML comment from x_account_info.md", () => {
+    const prompt = buildReplyReviewPrompt({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "",
+    });
+    expect(prompt).not.toContain("<!--");
+    expect(prompt).not.toContain("-->");
+  });
 });
 
 describe("buildReplyPromptIssueBody", () => {
@@ -47,6 +102,37 @@ describe("buildReplyPromptIssueBody", () => {
     expect(body).toContain("https://x.com/example_account/status/123");
     expect(body).toContain("Claude.ai");
     expect(body).toContain("料金は発生しません");
+  });
+
+  it("includes only one prompt (draft + self-check merged), so there is a single copy step", () => {
+    const body = buildReplyPromptIssueBody({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      postUrl: "https://x.com/example_account/status/123",
+      charLimit: 280,
+    });
+    expect(body).toContain("チェック項目");
+    expect(body).not.toContain("<!--");
+    expect(body).not.toContain("-->");
+  });
+
+  it("wraps the prompt in a fence longer than the ``` used inside it, so the prompt is not split mid-way", () => {
+    const body = buildReplyPromptIssueBody({
+      authorUsername: "example_account",
+      // 投稿本文自体にも```を含むケース(通常のツイート本文はこう書かれないが、
+      // フェンスの入れ子が正しく処理されているかを確認するため意図的に含める)。
+      postText: "最近こんなことを考えている、という投稿。",
+      postUrl: "https://x.com/example_account/status/123",
+      charLimit: 280,
+    });
+    // プロンプト本文は投稿本文を```で囲んでいる。issue側のフェンス(````)が
+    // それより長いことで、内側の```によって外側のフェンスが途中で閉じられない。
+    const outerFenceCount = body.split("````").length - 1;
+    expect(outerFenceCount).toBe(2);
+    const betweenFences = body.split("````")[1];
+    expect(betweenFences).toContain("```");
+    expect(betweenFences).toContain("最近こんなことを考えている、という投稿。");
+    expect(betweenFences).toContain("チェック項目");
   });
 });
 
