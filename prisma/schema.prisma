@@ -287,7 +287,6 @@ model WatchedAccount {
   updatedAt DateTime @updatedAt
 }
 
-// ウォッチ対象アカウントの投稿。新着を検知するたびに1件作り、リプライ生成の対象にする。
 // ウォッチ対象アカウントの投稿。新着を検知するたびに1件作り、リプライ検討issueの対象にする。
 // リプライ文はClaude APIには生成させず、GitHub issueに「Claude.aiのチャットに貼り付ける
 // プロンプト」を書くだけにする(API使用量を気にせず、新着を見つけ次第issueを作れるように
@@ -309,6 +308,11 @@ model WatchedPost {
   githubIssueRepo   String?
   githubIssueNumber Int?
   githubIssueUrl    String?
+
+  // 運用者がissueに投稿しようとしているリプライ案をコメントした際、そのレビュー用
+  // プロンプトを自動で返信した日時。レビューは1回だけ行う運用のため、既にセット済みの
+  // 場合は2回目以降のコメントに反応しない(src/cli/postXEngagementReviewComment.ts)。
+  reviewCommentPostedAt DateTime?
 
   createdAt DateTime @default(now())
 
