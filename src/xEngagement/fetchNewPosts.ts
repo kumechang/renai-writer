@@ -6,9 +6,12 @@ import { syncWatchedAccounts } from "./syncWatchedAccounts";
 import { loadXEngagementConfig } from "./config";
 import { createReplyPromptIssue } from "./promptIssue";
 
-// 直近検索で1回に取得する最大件数(X APIの上限)。ウォッチ対象全アカウント分の投稿を
-// まとめて取得するため、余裕を持って上限いっぱいにしておく。
-const SEARCH_MAX_RESULTS = 100;
+// 直近検索で1回に取得する最大件数。X APIの読み取りは返ってきた件数に応じて課金される
+// (2026年時点で投稿1件あたり約$0.005、100件返れば1回$0.50)ため、上限いっぱいの100件に
+// せず控えめにする。ウォッチ対象(現状11アカウント)がチェック間隔(3時間おき)の間に
+// 合計でこれを超える件数を新規投稿することは想定していない。超えた場合、超過分はその回は
+// 取得できず次回以降の検索で拾われる(投稿自体を見逃すわけではない)。
+const SEARCH_MAX_RESULTS = 20;
 
 // 検索クエリ("from:a OR from:b OR ...")の文字数上限の目安(X API Basicティアの
 // クエリ長上限512文字に対して安全マージンを取った値)。ウォッチ対象アカウントが
