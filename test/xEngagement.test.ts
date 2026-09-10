@@ -1,9 +1,20 @@
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadWatchAccountsConfig } from "../src/xEngagement/watchAccountsConfig";
 import { buildReplyConsolePrompt, buildReplyReviewPrompt } from "../src/xEngagement/replyConsolePrompt";
-import { buildReplyPromptIssueBody } from "../src/xEngagement/promptIssue";
+import { buildReplyPromptIssueBody, buildReviewCommentBody } from "../src/xEngagement/promptIssue";
+import { parseReviewCommentEvent } from "../src/xEngagement/reviewCommentEvent";
 import { aggregateCandidates, type CandidateEntry, type DiscoveryConfig } from "../src/xEngagement/discoverAccounts";
 import { buildDiscoveryIssueBody } from "../src/xEngagement/discoveryIssue";
+
+function writeEventPayload(payload: unknown): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "x-engagement-review-event-"));
+  const file = path.join(dir, "event.json");
+  writeFileSync(file, JSON.stringify(payload));
+  return file;
+}
 
 describe("loadWatchAccountsConfig", () => {
   it("filters out the placeholder example_account entry", () => {
@@ -133,6 +144,67 @@ describe("buildReplyPromptIssueBody", () => {
     expect(betweenFences).toContain("```");
     expect(betweenFences).toContain("最近こんなことを考えている、という投稿。");
     expect(betweenFences).toContain("チェック項目");
+  });
+});
+
+describe("buildReviewCommentBody", () => {
+  it("includes the draft reply, target post, and a pasteable review prompt", () => {
+    const body = buildReviewCommentBody({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "これめっちゃ分かります。自分も同じことを考えていました。",
+    });
+    expect(body).toContain("@example_account");
+    expect(body).toContain("最近こんなことを考えている、という投稿。");
+    expect(body).toContain("これめっちゃ分かります。自分も同じことを考えていました。");
+    expect(body).toContain("Claude.ai");
+    expect(body).toContain("料金は発生しません");
+  });
+
+  it("wraps the prompt in a fence longer than the ``` used inside it", () => {
+    const body = buildReviewCommentBody({
+      authorUsername: "example_account",
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "これめっちゃ分かります。",
+    });
+    const outerFenceCount = body.split("````").length - 1;
+    expect(outerFenceCount).toBe(2);
+  });
+});
+
+describe("parseReviewCommentEvent", () => {
+  it("targets a comment on an issue with the x-engagement-reply-prompt label", () => {
+    const eventPath = writeEventPayload({
+      action: "created",
+      comment: { body: "これめっちゃ分かる。", user: { login: "kumechang" } },
+      issue: { number: 75, labels: [{ name: "x-engagement-reply-prompt" }] },
+    });
+    expect(parseReviewCommentEvent(eventPath)).toEqual({
+      issueNumber: 75,
+      commenter: "kumechang",
+      commentBody: "これめっちゃ分かる。",
+      shouldReview: true,
+    });
+  });
+
+  it("ignores comments on issues without the label", () => {
+    const eventPath = writeEventPayload({
+      action: "created",
+      comment: { body: "これめっちゃ分かる。", user: { login: "kumechang" } },
+      issue: { number: 75, labels: [{ name: "auto-article" }] },
+    });
+    expect(parseReviewCommentEvent(eventPath).shouldReview).toBe(false);
+  });
+
+  it("ignores the bot's own comments to avoid self-triggering loops", () => {
+    const eventPath = writeEventPayload({
+      action: "created",
+      comment: { body: "レビュー用プロンプトです。", user: { login: "github-actions[bot]" } },
+      issue: { number: 75, labels: [{ name: "x-engagement-reply-prompt" }] },
+    });
+    expect(parseReviewCommentEvent(eventPath).shouldReview).toBe(false);
   });
 });
 
