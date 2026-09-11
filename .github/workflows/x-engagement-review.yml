@@ -9,6 +9,12 @@ name: X Engagement - Review Comment
 on:
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "レビュー用プロンプトを生成するissue番号(Xリプライ検討issue)。コメント連投時のconcurrency競合でキャンセルされ、レビューが返らなかった場合などに使う"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -25,8 +31,9 @@ jobs:
   review-comment:
     runs-on: ubuntu-latest
     if: >
-      contains(github.event.issue.labels.*.name, 'x-engagement-reply-prompt') &&
-      github.event.comment.user.login != 'github-actions[bot]'
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.issue.labels.*.name, 'x-engagement-reply-prompt') &&
+       github.event.comment.user.login != 'github-actions[bot]')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,6 +52,7 @@ jobs:
 
       - name: Post review prompt comment
         env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run x-engagement:review-comment
