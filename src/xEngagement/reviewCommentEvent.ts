@@ -38,3 +38,17 @@ export function parseReviewCommentEvent(eventPath: string): ReviewCommentEvent {
     shouldReview: hasLabel && commenter !== BOT_LOGIN,
   };
 }
+
+interface WorkflowDispatchEventPayload {
+  inputs: { issue_number: string };
+}
+
+// workflow_dispatchイベントのペイロードから、手動でレビュー用プロンプトを生成してほしい
+// issue番号を取り出す。issue_commentイベントと違いコメント本文を含まないため、対象の
+// コメント(投稿しようとしているリプライ案)は呼び出し側でissueのコメント一覧から取得する
+// 必要がある(src/cli/postXEngagementReviewComment.ts)。
+export function parseManualReviewTrigger(eventPath: string): { issueNumber: number } {
+  const raw = readFileSync(eventPath, "utf-8");
+  const payload = JSON.parse(raw) as WorkflowDispatchEventPayload;
+  return { issueNumber: Number(payload.inputs.issue_number) };
+}

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { loadWatchAccountsConfig } from "../src/xEngagement/watchAccountsConfig";
 import { buildReplyConsolePrompt, buildReplyReviewPrompt } from "../src/xEngagement/replyConsolePrompt";
 import { buildReplyPromptIssueBody, buildReviewCommentBody } from "../src/xEngagement/promptIssue";
-import { parseReviewCommentEvent } from "../src/xEngagement/reviewCommentEvent";
+import { parseReviewCommentEvent, parseManualReviewTrigger } from "../src/xEngagement/reviewCommentEvent";
 import { aggregateCandidates, type CandidateEntry, type DiscoveryConfig } from "../src/xEngagement/discoverAccounts";
 import { buildDiscoveryIssueBody } from "../src/xEngagement/discoveryIssue";
 
@@ -205,6 +205,16 @@ describe("parseReviewCommentEvent", () => {
       issue: { number: 75, labels: [{ name: "x-engagement-reply-prompt" }] },
     });
     expect(parseReviewCommentEvent(eventPath).shouldReview).toBe(false);
+  });
+});
+
+describe("parseManualReviewTrigger", () => {
+  it("extracts the issue number from a workflow_dispatch payload", () => {
+    const eventPath = writeEventPayload({
+      action: "workflow_dispatch",
+      inputs: { issue_number: "253" },
+    });
+    expect(parseManualReviewTrigger(eventPath)).toEqual({ issueNumber: 253 });
   });
 });
 
