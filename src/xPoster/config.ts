@@ -39,6 +39,10 @@ export interface XPosterConfig {
   // 投稿生成時に「直近よく使われている言葉」ヒントとして渡す、トレンドワードの件数
   // (src/xPoster/trendWords.ts、npm run x-post:collect-trendsが収集したもの)。
   trendWordsLimit: number;
+  // 公開済み記事の「制作裏話」(なぜこのテーマ/タイトル/構成にしたか)投稿を選ぶ確率(0〜1)。
+  // 記事URL付きスレッドと同様、自動選択の際に毎回この確率で試み、対象(まだ3トピックを
+  // 出し尽くしていない公開済み記事)が無ければ通常フローにフォールバックする。
+  behindTheScenesPostRatio: number;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), "config/x-poster.json");

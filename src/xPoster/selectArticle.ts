@@ -24,7 +24,9 @@ function pickRandom<T>(items: T[]): T {
 export async function selectArticleForPost(cooldownDays: number): Promise<Article> {
   const articles = await prisma.article.findMany({
     where: { status: { in: PROMOTABLE_ARTICLE_STATUSES } },
-    include: { xPosts: true },
+    // 制作裏話(behind_the_scenes)は販促とは別チャンネルの投稿なので、「既に宣伝済み」の
+    // 判定には数えない(制作裏話を出しても、通常の宣伝投稿の対象からは外れないようにする)。
+    include: { xPosts: { where: { postKind: { not: "behind_the_scenes" } } } },
   });
 
   const neverPromoted = articles.filter(

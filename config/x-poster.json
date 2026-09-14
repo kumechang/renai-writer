@@ -15,5 +15,6 @@
   "standalonePostRatio": 0.3,
   "recentPostsForVarietyWindow": 5,
   "urlPostsPerDay": 1,
-  "trendWordsLimit": 8
+  "trendWordsLimit": 8,
+  "behindTheScenesPostRatio": 0.15
 }

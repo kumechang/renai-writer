@@ -4,9 +4,11 @@ import { loadXPosterConfig, type XPosterConfig } from "./config";
 import { generatePost } from "./generatePost";
 import { generateStandalonePost } from "./generateStandalonePost";
 import { generateUrlThreadPost } from "./generateUrlThreadPost";
+import { generateBehindTheScenesPost } from "./generateBehindTheScenesPost";
 import { selfCheckPost, type SelfCheckResult } from "./selfCheckPost";
 import { selfCheckUrlThreadPost } from "./selfCheckUrlThreadPost";
 import { selfCheckStandalonePost } from "./selfCheckStandalonePost";
+import { selfCheckBehindTheScenesPost } from "./selfCheckBehindTheScenesPost";
 import { getWeightedLength } from "./tweetLength";
 import { shortenPost } from "./shortenPost";
 import { createXPostApprovalIssue } from "./approvalIssue";
@@ -15,6 +17,7 @@ import { parseGithubRepository } from "./env";
 import { selectArticleForPost, PROMOTABLE_ARTICLE_STATUSES } from "./selectArticle";
 import { findOriginSession, isArticlePublished } from "./articlePublication";
 import { hasReachedDailyUrlPostLimit, findUrlThreadCandidate } from "./urlThreadCandidate";
+import { selectBehindTheScenesTarget } from "./selectBehindTheScenesTarget";
 
 // 生成+セルフチェックのやり直し(config.maxGenerateRetries)でも文字数超過が
 // 解消しない場合の最終手段として、専用の短縮パスを最大この回数まで試す
@@ -71,6 +74,8 @@ interface PersistAndDispatchInput {
   repo: Repo;
   sourceIssueNumber: number | null;
   approvalMode: XPosterConfig["approvalMode"];
+  postKind: string;
+  behindTheScenesTopic: string | null;
 }
 
 // 記事(Article)を紹介する投稿、または記事に紐づかない単発投稿を1件作るパイプライン全体の
@@ -94,6 +99,9 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
   }
 
   if (!options.articleId) {
+    const behindTheScenesResult = await tryGenerateBehindTheScenesPost(config, repo);
+    if (behindTheScenesResult) return behindTheScenesResult;
+
     const urlThreadResult = await tryGenerateUrlThreadPost(config, repo);
     if (urlThreadResult) return urlThreadResult;
   }
@@ -182,6 +190,8 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
     repo,
     sourceIssueNumber: originSession?.issueNumber ?? null,
     approvalMode: config.approvalMode,
+    postKind: "promo",
+    behindTheScenesTopic: null,
   });
 }
 
@@ -255,6 +265,8 @@ async function generateStandaloneThreadPost(config: XPosterConfig, repo: Repo): 
     repo,
     sourceIssueNumber: null,
     approvalMode: config.approvalMode,
+    postKind: "standalone",
+    behindTheScenesTopic: null,
   });
 }
 
@@ -354,6 +366,107 @@ async function tryGenerateUrlThreadPost(
     repo,
     sourceIssueNumber: originSession?.issueNumber ?? null,
     approvalMode: config.approvalMode,
+    postKind: "url_thread",
+    behindTheScenesTopic: null,
+  });
+}
+
+// 公開済み記事の「制作裏話」(なぜこのテーマ/タイトル/構成にしたか)投稿を1件作る。
+// config.behindTheScenesPostRatioの確率で試み、外れた場合・対象(まだ3トピックを
+// 出し尽くしていない公開済み記事)が無い場合はnullを返し、呼び出し元は通常フローに
+// フォールバックする。宣伝(記事URL付きスレッド・通常投稿)とは別チャンネルの投稿のため、
+// 1日の件数上限やクールダウンは設けていない(頻度は確率とcron起動間隔で自然に抑えられる)。
+async function tryGenerateBehindTheScenesPost(
+  config: XPosterConfig,
+  repo: Repo
+): Promise<GenerateXPostResult | null> {
+  if (Math.random() >= config.behindTheScenesPostRatio) return null;
+
+  const target = await selectBehindTheScenesTarget();
+  if (!target) return null;
+
+  const { article, draft, plan, topic } = target;
+
+  const generate = () =>
+    generateBehindTheScenesPost(config.claudeModel, {
+      articleId: article.id,
+      articleTitle: article.title,
+      articleContent: draft.content,
+      topic,
+      planTheme: plan.theme,
+      planTargetReader: plan.targetReader,
+      planTitleCandidatesJson: plan.titleCandidates,
+      planStructure: plan.structure,
+      charLimit: config.xCharLimit,
+      recentFeedbackWindow: config.recentFeedbackWindow,
+      recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+    });
+
+  const runSelfCheckFor = (generatedText: string) =>
+    selfCheckBehindTheScenesPost(config.claudeModel, {
+      generatedPost: generatedText,
+      articleTitle: article.title,
+      articleContent: draft.content,
+      charLimit: config.xCharLimit,
+      passThreshold: config.selfCheckPassThreshold,
+      topicMaterialInput: {
+        topic,
+        articleTitle: article.title,
+        planTheme: plan.theme,
+        planTargetReader: plan.targetReader,
+        planTitleCandidatesJson: plan.titleCandidates,
+        planStructure: plan.structure,
+      },
+    });
+
+  let generatedText = await generate();
+  let selfCheck = await runSelfCheckFor(generatedText);
+  let finalText = selfCheck.data.final_post;
+  let weightedLength = getWeightedLength(finalText);
+
+  for (
+    let attempt = 1;
+    weightedLength > config.xCharLimit && attempt <= config.maxGenerateRetries;
+    attempt++
+  ) {
+    generatedText = await generate();
+    selfCheck = await runSelfCheckFor(generatedText);
+    finalText = selfCheck.data.final_post;
+    weightedLength = getWeightedLength(finalText);
+  }
+
+  for (
+    let attempt = 1;
+    weightedLength > config.xCharLimit && attempt <= MAX_SHORTEN_ATTEMPTS;
+    attempt++
+  ) {
+    finalText = await shortenPost(config.claudeModel, finalText, config.xCharLimit, attempt);
+    weightedLength = getWeightedLength(finalText);
+  }
+
+  if (weightedLength > config.xCharLimit) {
+    throw new Error(
+      `制作裏話投稿が文字数上限を超過したままです(規定回数のやり直し・短縮後も解消せず): ${weightedLength} > ${config.xCharLimit}`
+    );
+  }
+
+  const originSession = await findOriginSession(article.id);
+
+  return persistAndDispatch({
+    articleId: article.id,
+    articleTitle: article.title,
+    draftId: draft.id,
+    articleUrl: null,
+    generatedText,
+    finalText,
+    replyText: null,
+    selfCheckJson: JSON.stringify(selfCheck.data),
+    selfCheckData: selfCheck.data,
+    repo,
+    sourceIssueNumber: originSession?.issueNumber ?? null,
+    approvalMode: config.approvalMode,
+    postKind: "behind_the_scenes",
+    behindTheScenesTopic: topic,
   });
 }
 
@@ -372,6 +485,8 @@ async function persistAndDispatch(input: PersistAndDispatchInput): Promise<Gener
       status: "pending_approval",
       githubIssueOwner: input.repo.owner,
       githubIssueRepo: input.repo.repo,
+      postKind: input.postKind,
+      behindTheScenesTopic: input.behindTheScenesTopic,
     },
   });
 

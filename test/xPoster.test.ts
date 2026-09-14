@@ -15,6 +15,8 @@ import { isWithinPostingWindow } from "../src/xPoster/postingWindow";
 import type { XPosterConfig } from "../src/xPoster/config";
 import { buildVarietyHint } from "../src/xPoster/varietyHint";
 import { hasReachedDailyUrlPostLimit, findUrlThreadCandidate } from "../src/xPoster/urlThreadCandidate";
+import { selectBehindTheScenesTarget } from "../src/xPoster/selectBehindTheScenesTarget";
+import { buildTopicMaterial } from "../src/xPoster/generateBehindTheScenesPost";
 import * as articlePublication from "../src/xPoster/articlePublication";
 import {
   extractHashtags,
@@ -582,6 +584,159 @@ describe("findUrlThreadCandidate", () => {
 
     const candidate = await findUrlThreadCandidate(3);
     expect(candidate?.article.id).toBe(article.id);
+  });
+});
+
+describe("selectBehindTheScenesTarget", () => {
+  beforeEach(async () => {
+    await prisma.xPost.deleteMany();
+    await prisma.draft.deleteMany();
+    await prisma.article.deleteMany();
+    await prisma.plan.deleteMany();
+    vi.mocked(articlePublication.findOriginSession).mockReset();
+    vi.mocked(articlePublication.isArticlePublished).mockReset();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  async function createArticleWithDraft(status = "accepted") {
+    const candidates = Array.from({ length: 50 }, (_, i) => `候補${i + 1}`);
+    const plan = await prisma.plan.create({
+      data: {
+        theme: "テストテーマ",
+        targetReader: "テスト読者",
+        structure: "## 導入",
+        volume: "1000字",
+        paidSection: "後半を有料化",
+        titleCandidates: JSON.stringify(candidates),
+        recommendedTitles: JSON.stringify(candidates.slice(0, 10)),
+      },
+    });
+    const article = await prisma.article.create({
+      data: { planId: plan.id, title: "公開済みの記事", status },
+    });
+    await prisma.draft.create({
+      data: { articleId: article.id, revisionNumber: 0, title: "公開済みの記事", content: "本文", wordCount: 100 },
+    });
+    return article;
+  }
+
+  it("returns null when no article is published", async () => {
+    await createArticleWithDraft();
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue(null);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(false);
+
+    expect(await selectBehindTheScenesTarget()).toBeNull();
+  });
+
+  it("returns a candidate with one of the 3 topics when published and none used yet", async () => {
+    const article = await createArticleWithDraft();
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+
+    const target = await selectBehindTheScenesTarget();
+    expect(target?.article.id).toBe(article.id);
+    expect(["theme", "title", "structure"]).toContain(target?.topic);
+  });
+
+  it("does not repeat a topic already posted for the article", async () => {
+    const article = await createArticleWithDraft();
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+        postKind: "behind_the_scenes",
+        behindTheScenesTopic: "theme",
+      },
+    });
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        generatedText: "本文",
+        finalText: "本文",
+        status: "posted",
+        postKind: "behind_the_scenes",
+        behindTheScenesTopic: "title",
+      },
+    });
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+
+    const target = await selectBehindTheScenesTarget();
+    expect(target?.topic).toBe("structure");
+  });
+
+  it("returns null once all 3 topics have been posted for the only article", async () => {
+    const article = await createArticleWithDraft();
+    for (const topic of ["theme", "title", "structure"]) {
+      await prisma.xPost.create({
+        data: {
+          articleId: article.id,
+          generatedText: "本文",
+          finalText: "本文",
+          status: "posted",
+          postKind: "behind_the_scenes",
+          behindTheScenesTopic: topic,
+        },
+      });
+    }
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+
+    expect(await selectBehindTheScenesTarget()).toBeNull();
+  });
+
+  it("skips an article with an in-flight behind-the-scenes post, even if other topics remain", async () => {
+    const article = await createArticleWithDraft();
+    await prisma.xPost.create({
+      data: {
+        articleId: article.id,
+        generatedText: "本文",
+        finalText: "本文",
+        status: "pending_approval",
+        postKind: "behind_the_scenes",
+        behindTheScenesTopic: "theme",
+      },
+    });
+    vi.mocked(articlePublication.findOriginSession).mockResolvedValue({} as never);
+    vi.mocked(articlePublication.isArticlePublished).mockResolvedValue(true);
+
+    expect(await selectBehindTheScenesTarget()).toBeNull();
+  });
+});
+
+describe("buildTopicMaterial", () => {
+  const base = {
+    articleTitle: "実際に使ったタイトル",
+    planTheme: "テストテーマ",
+    planTargetReader: "テスト読者",
+    planTitleCandidatesJson: JSON.stringify(["実際に使ったタイトル", "候補2", "候補3", "候補4", "候補5", "候補6"]),
+    planStructure: "## 導入\n## 本論\n## まとめ",
+  };
+
+  it("builds theme material from the plan's theme and target reader", () => {
+    const result = buildTopicMaterial({ ...base, topic: "theme" });
+    expect(result.label).toBe("なぜこのテーマを選んだのか");
+    expect(result.material).toContain("テストテーマ");
+    expect(result.material).toContain("テスト読者");
+  });
+
+  it("builds title material including the chosen title but excluding it from the alternatives", () => {
+    const result = buildTopicMaterial({ ...base, topic: "title" });
+    expect(result.label).toBe("なぜこのタイトルにしたのか");
+    expect(result.material).toContain("実際に使ったタイトル");
+    const alternativesSection = result.material.split("検討した他のタイトル案")[1];
+    expect(alternativesSection).not.toContain("- 実際に使ったタイトル\n");
+  });
+
+  it("builds structure material from the plan's structure", () => {
+    const result = buildTopicMaterial({ ...base, topic: "structure" });
+    expect(result.label).toBe("どういう構成にしたのか");
+    expect(result.material).toContain("## 導入");
   });
 });
 
