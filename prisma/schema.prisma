@@ -195,6 +195,17 @@ model XPost {
   finalText     String
   selfCheckJson String?
 
+  // promo: 記事紹介(通常投稿) / standalone: 記事に紐づかない単発投稿 /
+  // url_thread: 記事URL付きスレッド / behind_the_scenes: 制作裏話(テーマ/タイトル/構成の解説)。
+  // selectArticleForPost(記事紹介の再選定)はbehind_the_scenesを「宣伝済み」に数えない
+  // (販促とは別チャンネルの投稿のため)。
+  postKind String @default("promo")
+  // postKind=behind_the_scenesの場合のみ設定。theme: なぜこのテーマを選んだか /
+  // title: なぜこのタイトルにしたか / structure: どういう構成にしたか。
+  // 同じ記事に対して3トピックとも出し尽くすまで、次回選定時に同じトピックを繰り返さない
+  // ために使う(selectBehindTheScenesTarget.ts)。
+  behindTheScenesTopic String?
+
   // pending_approval -> approved / rejected -> posted / posted_dryrun / post_failed
   status String @default("pending_approval")
 
