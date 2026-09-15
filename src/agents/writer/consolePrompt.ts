@@ -18,7 +18,8 @@ ${plan.structure}
 export function buildWriterDraftConsolePrompt(
   plan: PlanResponse,
   title: string,
-  researchBriefing?: string
+  researchBriefing?: string,
+  varietyHint?: string | null
 ): string {
   return `あなたは恋愛メディアの記事制作チームに所属する「ライター」です。
 この会話でのあなたの仕事は、編集者が立てた企画をもとに記事本文を執筆することだけです。
@@ -27,7 +28,7 @@ export function buildWriterDraftConsolePrompt(
 # 企画内容
 
 ${formatPlan(plan, title)}
-${researchBriefing ? `\n# 調査員による調査資料\n\n${researchBriefing}\n` : ""}
+${researchBriefing ? `\n# 調査員による調査資料\n\n${researchBriefing}\n` : ""}${varietyHint ? `\n# 他記事との重複回避\n\n${varietyHint}\n` : ""}
 # 執筆の指示
 
 - タイトルは上記のタイトルをそのまま使ってください。

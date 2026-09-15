@@ -5,6 +5,7 @@ import { createRequestResearchTool } from "../shared/requestResearchTool";
 import type { AgentRunConfig, ArticleResponse, DraftResponse, PlanResponse } from "../shared/types";
 import { buildWriterDraftSystemPrompt, buildWriterRevisionSystemPrompt } from "./systemPrompt";
 import { createSubmitDraftTool } from "./tools";
+import { buildArticleVarietyHint } from "./varietyHint";
 
 const MODEL = "claude-sonnet-5";
 
@@ -74,9 +75,10 @@ export async function runWriterDraft(
   const article = await fetchJson<ArticleResponse>(
     `${config.apiBaseUrl}/api/plans/${planId}/articles/${articleId}`
   );
+  const varietyHint = await buildArticleVarietyHint(config.apiBaseUrl, planId, articleId);
 
   return runWriterTool(
-    buildWriterDraftSystemPrompt(plan, article.title),
+    buildWriterDraftSystemPrompt(plan, article.title, varietyHint),
     "企画に沿って記事本文を執筆してください。",
     config,
     planId,
