@@ -5,17 +5,17 @@ try {
   // .env が無い場合はそのまま既存の環境変数を使う
 }
 
-import { fetchNewPosts } from "../xEngagement/fetchNewPosts";
+import { findReplyCandidates } from "../xEngagement/findReplyCandidates";
 
-// npm run x-engagement:collect のエントリポイント。config/x-watch-accounts.jsonに
-// 登録したアカウント(「フォロワー1万人以上の憧れのアカウント」5〜10件)の新着投稿を
-// X APIから取得し、見つけ次第、件数を気にせずGitHub issue(Claude.aiのチャットに
-// 貼り付けるリプライ検討プロンプト)を作る。Claude APIは呼ばないため、issueを何件
-// 作ってもAPI使用量は増えない。
+// npm run x-engagement:collect のエントリポイント。特定アカウントの監視ではなく、
+// 恋愛・婚活ジャンルのキーワード検索(1回のAPI呼び出しのみ、ユーザー情報は取得しない)で
+// 直近の投稿を取得し、インプレッション数が閾値を超えているものだけ(1ユーザーあたり1件)を
+// GitHub issue(Claude.aiのチャットに貼り付けるリプライ検討プロンプト)にする。
+// Claude APIは呼ばないため、issueを何件作ってもAPI使用量は増えない。
 async function main() {
-  const result = await fetchNewPosts();
+  const result = await findReplyCandidates();
   console.log(
-    `[x-engagement] checked ${result.accountsChecked} account(s), found ${result.newPosts} new post(s), created ${result.issuesCreated} issue(s)`
+    `[x-engagement] fetched ${result.fetched} post(s), ${result.qualifying} above impression threshold, created ${result.issuesCreated} issue(s)`
   );
 }
 

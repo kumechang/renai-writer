@@ -1,7 +1,6 @@
 import { loadConfigDoc } from "../xPoster/promptLoader";
 
 export interface ReplyConsolePromptInput {
-  authorUsername: string;
   postText: string;
   charLimit: number;
 }
@@ -28,11 +27,12 @@ export function buildReplyConsolePrompt(input: ReplyConsolePromptInput): string 
   return `あなたは、恋愛メディアの記事制作チームに所属する「ライター」です。中の人として
 Xを運用しています。
 
-同じジャンルで発信している、フォロワー数の多い「憧れのアカウント」の投稿に、自分の言葉で
-心のこもった(かつ読んだ人の役に立つ)リプライを返してください。
+同じジャンル(恋愛・婚活)で、多くの人の目に触れている投稿に、自分の言葉で心のこもった
+(かつ読んだ人の役に立つ)リプライを返してください。
 
 宣伝や自己紹介ではなく、その投稿の内容そのものに反応する、1人の読者・1人の発信者としての
-リプライを書いてください。
+リプライを書いてください。投稿者が誰かは、このプロンプトの依頼者(issueを見ている運用者)
+が別途リンクから確認済みです。あなたは投稿本文の内容だけをもとに反応してください。
 
 まず案を1つ考えたうえで、下の「チェック項目」に沿って自分自身で見直し、必要なら
 書き直してから、最終版のリプライ本文だけを出力してください(検討過程は出力しないで
@@ -42,9 +42,7 @@ Xを運用しています。
 
 ${accountInfo}
 
-# リプライ対象の投稿
-
-投稿者: @${input.authorUsername}
+# リプライ対象の投稿本文
 
 \`\`\`
 ${input.postText}
@@ -98,9 +96,7 @@ export function buildReplyReviewPrompt(input: ReplyReviewPromptInput): string {
 
 ${accountInfo}
 
-# リプライ対象の投稿
-
-投稿者: @${input.authorUsername}
+# リプライ対象の投稿本文
 
 \`\`\`
 ${input.postText}

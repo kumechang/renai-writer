@@ -347,81 +347,49 @@ npm run x-post:collect-trends         # ジャンル内のトレンドワード�
 必要な環境変数（`X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_SECRET`）は
 `.env.example` を参照。X APIキーが未設定でもドライラン（ログ出力のみ）で動作する。
 
-## Xエンゲージメント施策（憧れのアカウントをウォッチしてリプライ）
+## Xエンゲージメント施策（インプレッションの多い投稿にリプライ）
 
-業者に頼らずフォロワーを増やす方法として、「同じジャンルでフォロワー1万人以上の憧れの
-アカウントを5〜10人フォローし、通知オンにして、投稿直後に心のこもった（かつ有益な）
-リプライを毎日3〜5回返す」というアドバイスがある。これをXの新着投稿の検知まで
-自動化した仕組み（`src/xEngagement/`）。
+業者に頼らずフォロワーを増やす方法として、「同じジャンルで多くの人の目に触れている
+投稿に、心のこもった（かつ有益な）リプライを返す」というアドバイスがある。これを
+Xの高インプレッション投稿の検知まで自動化した仕組み（`src/xEngagement/`）。
 
 **リプライ文の生成・投稿はどちらも自動化していない。**
 
 - 投稿: X APIの自動化ルール（[X's automation development
   rules](https://help.x.com/en/rules-and-policies/x-automation)）は、自分の
   アカウントがメンションされていない他アカウントの投稿への自動リプライを禁止しており、
-  ウォッチ対象アカウントの投稿は当然これに該当する。
+  検索で見つけたアカウントの投稿は当然これに該当する。
 - 生成: 当初はClaude APIでリプライ文を自動生成していたが、API使用量を気にせず
-  件数を絞らずに運用したいという要望から、Claude APIは呼ばない方式に変更した。
+  運用したいという要望から、Claude APIは呼ばない方式に変更した。
 
-そのため今の仕組みは、新着投稿を見つけたら**GitHub issueに「Claude.aiのチャット画面に
-貼り付けるプロンプト」を書くところまで**で終わる。実際にどう返信するか考えるのも、
-Xへの投稿も、どちらも運用者が手動で行う（`src/agents/researcher/`等で使っている
-「コンソール駆動」と同じ考え方。Claude.aiのチャット利用は課金APIではないため、
-issueを何件作っても追加コストは発生しない）。
+そのため今の仕組みは、高インプレッションの投稿を見つけたら**GitHub issueに
+「Claude.aiのチャット画面に貼り付けるプロンプト」を書くところまで**で終わる。
+実際にどう返信するか考えるのも、Xへの投稿も、どちらも運用者が手動で行う
+（`src/agents/researcher/`等で使っている「コンソール駆動」と同じ考え方。Claude.aiの
+チャット利用は課金APIではないため、issueを何件作っても追加コストは発生しない）。
 
-### セットアップ
-
-`config/x-watch-accounts.json` に、ウォッチしたいアカウント（フォロワー1万人以上の
-憧れのアカウントなど）を5〜10件程度登録する。
-
-```json
-[
-  { "username": "some_account", "note": "同ジャンルで影響力のあるアカウント" }
-]
-```
-
-登録したアカウントは、次回の`npm run x-engagement:collect`実行時にDB（`WatchedAccount`）へ
-自動的に同期される（ファイルから削除したアカウントは`active: false`になるだけで、
-過去の履歴は残る）。
-
-#### ウォッチ候補アカウントの探索（`npm run x-engagement:discover`）
-
-手作業でアカウントを探す代わりに、`config/x-engagement-discovery.json`の検索キーワード
-（恋愛の執着・未練・片思いなどジャンルに沿った語）でXの直近投稿を検索し、フォロワー数の
-多い投稿者（`minFollowers`〜`maxFollowers`、既定1万〜50万人。`config/x-watch-accounts.json`
-に未登録のアカウントのみ）を候補としてGitHub issue（`x-engagement-discovery`ラベル）に
-まとめるコマンド。定期実行はせず、必要なときに手動で実行する想定
-（`.github/workflows/x-engagement-discover.yml`、`workflow_dispatch`）。
-
-見つかった候補は自動ではウォッチ対象に加えず、issueの内容を確認したうえで運用者が
-`config/x-watch-accounts.json`に追記する（DBを使わない読み取り専用の処理のため、
-他のx-engagement-*ワークフローと違いprisma migrate deployは不要）。
-
-**検索結果には注意すること。** 同じ単語を含む無関係なアカウント（占い師・小説家・
-マッチングアプリ事業者など隣接ジャンル）が混じるのはもちろん、アダルト系・
-ゴシップ系アカウントが紛れ込むこともある（実際に発生した）。`config/x-watch-accounts.json`
-への追記は必ず人の目でissueを確認してから行うこと。
-
-```bash
-npm run x-engagement:discover
-```
-
-### 新着投稿の検知とリプライ検討issue
+### 高インプレッション投稿の検知とリプライ検討issue
 
 `npm run x-engagement:collect`（`.github/workflows/x-engagement-collect.yml`、
-主経路は外部cronサービスからの`workflow_dispatch`、既定15分おき。native scheduleは
-1日1回の保険）が、以下を行う（`src/xEngagement/fetchNewPosts.ts`）。
+1日1回のnative schedule）が、以下を行う（`src/xEngagement/findReplyCandidates.ts`）。
 
-1. ウォッチ対象アカウント全員分の新着投稿（リツイート・リプライを除く本人の投稿）を、
-   X APIの投稿検索（`from:user1 OR from:user2 OR ...`）で**1回のAPI呼び出しにまとめて**
-   取得する（discoverAccounts.tsと同じ投稿検索エンドポイントを使う。アカウントを1人ずつ
-   呼び出す方式と違い、ウォッチ対象が増えてもAPI呼び出し数自体は増えない。クエリ文字数の
-   上限、目安で20アカウント程度に達するまで）。
-2. まだ`WatchedPost`として保存していない投稿が見つかった場合、**件数を気にせずその場で**
-   GitHub issue（`x-engagement-reply-prompt`ラベル）を作る。issueには対象の投稿本文と、
+1. 特定アカウントの監視ではなく、`config/x-engagement-search.json`のジャンル横断
+   キーワード検索（恋愛・婚活など）で直近の投稿を**1回のAPI呼び出しだけ**取得する
+   （既定10件。X APIの読み取りは返ってきた件数に応じて課金されるため、1回あたりの
+   コストは`件数 × 約$0.005`で固定される。ユーザー情報は取得しない
+   ―1ユーザーの読み取りに約$0.010かかるため、あえて取得せずコストを抑えている）。
+2. 取得した投稿のうち、インプレッション数（`impressionCount`、取得無料の付随情報）が
+   `config/x-engagement-search.json`の`impressionThreshold`（既定1000）を超えているものを、
+   同一投稿者からは最もインプレッション数の多い1件だけに絞り込む。
+3. 該当する投稿ごとに、まだ`WatchedPost`として保存していなければGitHub issue
+   （`x-engagement-reply-prompt`ラベル）を作る。issueには対象の投稿本文と、
    Claude.aiのチャット画面にそのままコピー&ペーストできる「リプライ検討プロンプト」
    （`src/xEngagement/replyConsolePrompt.ts`）を書く。Claude APIは呼ばないため、
    何件issueを作ってもAPI使用量は増えない。
+
+投稿者のユーザー名は取得しないため、issueには`https://x.com/i/web/status/{tweetId}`
+形式のリンクだけを載せる（ユーザー名を問わずツイートIDだけで正しい投稿に遷移するため、
+誰の投稿かはリンクを開いて直接確認する）。
 
 運用者はissueを開き、プロンプトをClaude.aiのチャットに貼り付けて返信文を考えてもらい、
 気に入った文面ができたらXアプリ等から手動でリプライを投稿し、issueをクローズする。
@@ -429,13 +397,23 @@ npm run x-engagement:discover
 本文だけでは中身が分からない場合など）は、リプライを見送ってクローズしてよい。
 
 ```bash
-npm run x-engagement:discover  # ウォッチ候補アカウントをX検索から探してissueにまとめる
-npm run x-engagement:collect   # ウォッチ対象アカウントの新着投稿を検知し、リプライ検討issueを作る
+npm run x-engagement:collect   # 高インプレッション投稿を検知し、リプライ検討issueを作る
 ```
 
 必要な環境変数は`GITHUB_TOKEN` / `GITHUB_REPOSITORY` / `X_API_KEY`等（`.env.example`参照）。
-`ANTHROPIC_API_KEY`は不要（Claude APIを呼ばないため）。X APIキーは新着投稿の取得
-（読み取り）と`x-engagement:discover`での検索にのみ使い、投稿には使わない。
+`ANTHROPIC_API_KEY`は不要（Claude APIを呼ばないため）。
+
+### （運用停止中）特定アカウントを監視する旧方式
+
+以前は「フォロワー1万人以上の憧れのアカウント」を`config/x-watch-accounts.json`に
+5〜10件登録し、そのアカウントの新着投稿だけを監視する方式だった
+（`WatchedAccount`モデル、`npm run x-engagement:discover`によるアカウント探索）。
+1回の検知でも複数アカウント分の投稿ぶんissueが作られ、GitHub issueが荒れやすかった
+ことと、ユーザー情報の取得コストが変動しやすかったことから、上記のジャンル横断検索
+＋インプレッションしきい値方式に置き換えた。`WatchedAccount`関連のコード
+（`src/xEngagement/discoverAccounts.ts`等）とconfigは、将来また特定アカウントを
+狙い撃ちしたくなった場合のために残してあるが、現在の`x-engagement:collect`からは
+呼び出していない。
 
 ## テスト
 

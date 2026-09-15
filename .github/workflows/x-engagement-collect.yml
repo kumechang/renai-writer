@@ -1,32 +1,20 @@
 name: X Engagement - Collect
 
-# config/x-watch-accounts.jsonに登録したウォッチ対象アカウント(「フォロワー1万人以上の
-# 憧れのアカウント」5〜10件)の新着投稿をX APIから取得し、WatchedPostとして保存する。
-# 見つけ次第、件数を気にせずGitHub issue(Claude.aiのチャットに貼り付けるリプライ検討
-# プロンプト)を作る(src/xEngagement/promptIssue.ts)。Claude APIは呼ばないため、
-# issueを何件作ってもAPI使用量は増えない。実際にどう返信するか・投稿するかはissueを見た
-# 運用者が判断する(自動生成・自動承認は行わない)。
+# 特定アカウントの監視ではなく、恋愛・婚活ジャンルのキーワード横断検索
+# (config/x-engagement-search.json)で直近の投稿を取得し、インプレッション数が
+# しきい値を超えているものだけ(1ユーザーあたり1件)をGitHub issue(Claude.aiの
+# チャットに貼り付けるリプライ検討プロンプト)にする(src/xEngagement/findReplyCandidates.ts)。
+# Claude APIは呼ばないため、issueを何件作ってもAPI使用量は増えない。
 #
-# ウォッチ対象アカウント全員分をX APIの投稿検索(`from:user1 OR from:user2 OR ...`)で
-# 1回のAPI呼び出しにまとめて取得する(src/xEngagement/fetchNewPosts.ts)ため、
-# アカウント数が増えてもAPI呼び出し数自体は増えない(クエリ文字数の上限に達するまで)。
-#
-# GitHub Actionsのscheduleは数時間〜1日単位で遅延・スキップされることがあり
-# (x-post-generate.ymlで確認済み)、15分おきのような高頻度実行では特に顕著になりうる。
-# 確実性を優先する場合は、外部のcronサービス(cron-job.orgなど)からworkflow_dispatch APIを
-# 15分おきに叩く方式を主経路にすること。native scheduleは保険として残す。
+# コストは1回の実行につき「取得件数 × 約$0.005」で固定される(ユーザー情報は取得しない
+# ため、追加コストは発生しない)。既定値(10件)なら1回あたり約$0.05。1日1回の実行を
+# 想定しており、GitHub Actionsの標準scheduleの遅延・スキップ(数時間程度)は許容できるため、
+# 外部のcronサービスは使わない。
 
 on:
-  # 自動実行は一時停止中(GitHub issueが増えすぎて見づらくなったため、運用者が
-  # 「いったん止めよう」と判断した)。native scheduleを止めるだけでは不十分なので注意:
-  # このワークフローは外部のcronサービス(cron-job.orgなど)からworkflow_dispatch APIを
-  # 15分おきに叩く方式を主経路として運用していたため、on.scheduleを外してもそちらの
-  # 呼び出しは止まらない。そのためjob側にif: falseのガードを入れ、トリガー元が
-  # schedule/workflow_dispatchのどちらであっても実行されないようにしている。
-  # 再開する場合は、下のscheduleのコメントアウトを外し、jobsのifガードも削除すること
-  # (あわせて、cron-job.org側で15分おきの呼び出しを別途止めているかどうかも確認する)。
-  #
-  # - cron: "13 3 * * *"
+  schedule:
+    # 1日1回(JST12時ごろ)。
+    - cron: "0 3 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -43,9 +31,6 @@ env:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    # 上記の理由により、workflow_dispatch(手動・外部cron経由問わず)が来ても実行しない。
-    # 再開するときはこの行ごと削除する。
-    if: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,13 +41,12 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
       - name: Apply database migrations
         run: npx prisma migrate deploy
 
-      - name: Collect new posts from watched accounts
+      - name: Find high-impression reply candidates
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
