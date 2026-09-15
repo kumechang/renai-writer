@@ -298,19 +298,36 @@ model WatchedAccount {
   updatedAt DateTime @updatedAt
 }
 
-// ウォッチ対象アカウントの投稿。新着を検知するたびに1件作り、リプライ検討issueの対象にする。
-// リプライ文はClaude APIには生成させず、GitHub issueに「Claude.aiのチャットに貼り付ける
-// プロンプト」を書くだけにする(API使用量を気にせず、新着を見つけ次第issueを作れるように
-// するため。src/xEngagement/replyConsolePrompt.ts)。issue作成後、実際にどう返信するか・
+// ウォッチ対象アカウントの投稿、またはジャンル横断検索で見つけた高インプレッション投稿。
+// 見つかるたびに1件作り、リプライ検討issueの対象にする。リプライ文はClaude APIには
+// 生成させず、GitHub issueに「Claude.aiのチャットに貼り付けるプロンプト」を書くだけに
+// する(API使用量を気にせず、見つけ次第issueを作れるようにするため。
+// src/xEngagement/replyConsolePrompt.ts)。issue作成後、実際にどう返信するか・
 // 投稿したかどうかは運用者がissue上で判断する(承認/却下のような自動判定は行わない)。
+//
+// 2つの収集経路がある:
+// (1) 特定アカウントの監視(WatchedAccount紐付け、watchedAccountId/authorUsernameを使う。
+//     現在は運用停止中)
+// (2) ジャンル横断のキーワード検索でインプレッション数の多い投稿を拾う経路
+//     (src/xEngagement/findReplyCandidates.ts、watchedAccountIdはnull)。
+//     ユーザー名を解決するAPI呼び出し(1ユーザーあたり課金)を避けるため、
+//     数値のauthorId・インプレッション数・投稿URLをそのまま保存する。
+//     投稿URLは `https://x.com/i/web/status/{tweetId}` 形式(ユーザー名を問わず
+//     ツイートIDだけで正しい投稿に遷移する)。
 model WatchedPost {
-  id               String         @id @default(cuid())
-  watchedAccountId String
-  watchedAccount   WatchedAccount @relation(fields: [watchedAccountId], references: [id], onDelete: Cascade)
+  id               String          @id @default(cuid())
+  watchedAccountId String?
+  watchedAccount   WatchedAccount? @relation(fields: [watchedAccountId], references: [id], onDelete: Cascade)
 
   tweetId  String   @unique
   text     String
   postedAt DateTime
+
+  // ジャンル横断検索経路でのみ設定される(数値のX author_id、インプレッション数、
+  // 投稿URL)。アカウント監視経路ではnullのまま。
+  authorId        String?
+  impressionCount Int?
+  postUrl         String?
 
   // new: 未対応 / prompted: リプライ検討issueを作成済み / skipped: 対象外
   status String @default("new")

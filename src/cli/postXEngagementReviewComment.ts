@@ -42,7 +42,6 @@ async function main() {
 
   const post = await prisma.watchedPost.findFirst({
     where: { githubIssueNumber: issueNumber },
-    include: { watchedAccount: true },
   });
   if (!post) {
     console.warn(`no WatchedPost found for issue #${issueNumber}`);
@@ -67,7 +66,6 @@ async function main() {
 
   const config = loadXEngagementConfig();
   const body = buildReviewCommentBody({
-    authorUsername: post.watchedAccount.username,
     postText: post.text,
     charLimit: config.xCharLimit,
     draftReply,

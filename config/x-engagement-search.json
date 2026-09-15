@@ -1,0 +1,5 @@
+{
+  "searchQuery": "(恋愛 OR 婚活 OR 失恋 OR 片思い OR 復縁 OR 未練) lang:ja -is:retweet -is:reply",
+  "maxResults": 10,
+  "impressionThreshold": 1000
+}

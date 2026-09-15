@@ -11,9 +11,11 @@ export const X_ENGAGEMENT_PROMPT_LABEL = "x-engagement-reply-prompt";
 const ISSUE_CODE_FENCE = "````";
 
 export interface ReplyPromptIssueContent {
-  authorUsername: string;
   postText: string;
   postUrl: string;
+  // 投稿のインプレッション数(閲覧数)。ユーザー名は解決しない(コスト削減のため)ので、
+  // 誰の投稿かはissue上のリンクを開いて直接確認してもらう。
+  impressionCount: number;
   charLimit: number;
 }
 
@@ -22,14 +24,16 @@ export interface ReplyPromptIssueContent {
 // 案の作成とセルフチェックを1つのプロンプトに統合しているため、コピー&ペーストは1回で済む。
 export function buildReplyPromptIssueBody(content: ReplyPromptIssueContent): string {
   const prompt = buildReplyConsolePrompt({
-    authorUsername: content.authorUsername,
     postText: content.postText,
     charLimit: content.charLimit,
   });
 
   return [
-    `## リプライ対象: @${content.authorUsername}の投稿`,
+    `## リプライ対象の投稿(${content.impressionCount.toLocaleString()}インプレッション)`,
     content.postUrl,
+    "",
+    "(誰の投稿かは、上のリンクを開いて確認してください。ユーザー名の取得はコスト削減のため" +
+      "行っていません)",
     "",
     "## 対象の投稿本文",
     "```",
@@ -53,7 +57,6 @@ export function buildReplyPromptIssueBody(content: ReplyPromptIssueContent): str
 }
 
 export interface ReviewCommentBodyContent {
-  authorUsername: string;
   postText: string;
   charLimit: number;
   // issueにコメントされた、投稿しようとしているリプライ案そのもの。
@@ -83,7 +86,7 @@ export async function createReplyPromptIssue(
   repo: string,
   content: ReplyPromptIssueContent
 ): Promise<CreatedIssue> {
-  const title = `Xリプライ検討: @${content.authorUsername}への返信`;
+  const title = `Xリプライ検討: ${content.impressionCount.toLocaleString()}インプレッションの投稿`;
   const body = buildReplyPromptIssueBody(content);
   return createIssue(owner, repo, title, body, [X_ENGAGEMENT_PROMPT_LABEL]);
 }

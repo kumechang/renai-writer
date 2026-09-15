@@ -8,6 +8,7 @@ import { buildReplyPromptIssueBody, buildReviewCommentBody } from "../src/xEngag
 import { parseReviewCommentEvent, parseManualReviewTrigger } from "../src/xEngagement/reviewCommentEvent";
 import { aggregateCandidates, type CandidateEntry, type DiscoveryConfig } from "../src/xEngagement/discoverAccounts";
 import { buildDiscoveryIssueBody } from "../src/xEngagement/discoveryIssue";
+import { selectQualifyingTweets, type RawTweetEntry } from "../src/xEngagement/findReplyCandidates";
 
 function writeEventPayload(payload: unknown): string {
   const dir = mkdtempSync(path.join(tmpdir(), "x-engagement-review-event-"));
@@ -24,20 +25,17 @@ describe("loadWatchAccountsConfig", () => {
 });
 
 describe("buildReplyConsolePrompt", () => {
-  it("includes the author, post text, and char limit", () => {
+  it("includes the post text and char limit", () => {
     const prompt = buildReplyConsolePrompt({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       charLimit: 280,
     });
-    expect(prompt).toContain("@example_account");
     expect(prompt).toContain("最近こんなことを考えている、という投稿。");
     expect(prompt).toContain("280文字");
   });
 
   it("instructs Claude to decline when the post content is not visible (link-only posts)", () => {
     const prompt = buildReplyConsolePrompt({
-      authorUsername: "example_account",
       postText: "ここ https://t.co/xxxxx",
       charLimit: 280,
     });
@@ -46,7 +44,6 @@ describe("buildReplyConsolePrompt", () => {
 
   it("does not leak the editor-only HTML comment from x_account_info.md", () => {
     const prompt = buildReplyConsolePrompt({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       charLimit: 280,
     });
@@ -56,7 +53,6 @@ describe("buildReplyConsolePrompt", () => {
 
   it("includes the self-check criteria so drafting and checking happen in one prompt", () => {
     const prompt = buildReplyConsolePrompt({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       charLimit: 280,
     });
@@ -67,12 +63,10 @@ describe("buildReplyConsolePrompt", () => {
 describe("buildReplyReviewPrompt", () => {
   it("includes the draft reply, target post, and char limit when a draft is given", () => {
     const prompt = buildReplyReviewPrompt({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       charLimit: 280,
       draftReply: "これめっちゃ分かります。自分も同じことを考えていました。",
     });
-    expect(prompt).toContain("@example_account");
     expect(prompt).toContain("最近こんなことを考えている、という投稿。");
     expect(prompt).toContain("これめっちゃ分かります。自分も同じことを考えていました。");
     expect(prompt).toContain("280文字");
@@ -80,7 +74,6 @@ describe("buildReplyReviewPrompt", () => {
 
   it("shows a placeholder instead of the draft when none is given", () => {
     const prompt = buildReplyReviewPrompt({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       charLimit: 280,
       draftReply: "",
@@ -90,7 +83,6 @@ describe("buildReplyReviewPrompt", () => {
 
   it("does not leak the editor-only HTML comment from x_account_info.md", () => {
     const prompt = buildReplyReviewPrompt({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       charLimit: 280,
       draftReply: "",
@@ -101,25 +93,25 @@ describe("buildReplyReviewPrompt", () => {
 });
 
 describe("buildReplyPromptIssueBody", () => {
-  it("includes the target post, post URL, and a pasteable prompt", () => {
+  it("includes the target post, post URL, impression count, and a pasteable prompt", () => {
     const body = buildReplyPromptIssueBody({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
-      postUrl: "https://x.com/example_account/status/123",
+      postUrl: "https://x.com/i/web/status/123",
+      impressionCount: 1500,
       charLimit: 280,
     });
-    expect(body).toContain("@example_account");
+    expect(body).toContain("1,500インプレッション");
     expect(body).toContain("最近こんなことを考えている、という投稿。");
-    expect(body).toContain("https://x.com/example_account/status/123");
+    expect(body).toContain("https://x.com/i/web/status/123");
     expect(body).toContain("Claude.ai");
     expect(body).toContain("料金は発生しません");
   });
 
   it("includes only one prompt (draft + self-check merged), so there is a single copy step", () => {
     const body = buildReplyPromptIssueBody({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
-      postUrl: "https://x.com/example_account/status/123",
+      postUrl: "https://x.com/i/web/status/123",
+      impressionCount: 1500,
       charLimit: 280,
     });
     expect(body).toContain("チェック項目");
@@ -129,11 +121,11 @@ describe("buildReplyPromptIssueBody", () => {
 
   it("wraps the prompt in a fence longer than the ``` used inside it, so the prompt is not split mid-way", () => {
     const body = buildReplyPromptIssueBody({
-      authorUsername: "example_account",
       // 投稿本文自体にも```を含むケース(通常のツイート本文はこう書かれないが、
       // フェンスの入れ子が正しく処理されているかを確認するため意図的に含める)。
       postText: "最近こんなことを考えている、という投稿。",
-      postUrl: "https://x.com/example_account/status/123",
+      postUrl: "https://x.com/i/web/status/123",
+      impressionCount: 1500,
       charLimit: 280,
     });
     // プロンプト本文は投稿本文を```で囲んでいる。issue側のフェンス(````)が
@@ -150,12 +142,10 @@ describe("buildReplyPromptIssueBody", () => {
 describe("buildReviewCommentBody", () => {
   it("includes the draft reply, target post, and a pasteable review prompt", () => {
     const body = buildReviewCommentBody({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       charLimit: 280,
       draftReply: "これめっちゃ分かります。自分も同じことを考えていました。",
     });
-    expect(body).toContain("@example_account");
     expect(body).toContain("最近こんなことを考えている、という投稿。");
     expect(body).toContain("これめっちゃ分かります。自分も同じことを考えていました。");
     expect(body).toContain("Claude.ai");
@@ -164,7 +154,6 @@ describe("buildReviewCommentBody", () => {
 
   it("wraps the prompt in a fence longer than the ``` used inside it", () => {
     const body = buildReviewCommentBody({
-      authorUsername: "example_account",
       postText: "最近こんなことを考えている、という投稿。",
       charLimit: 280,
       draftReply: "これめっちゃ分かります。",
@@ -294,6 +283,60 @@ describe("aggregateCandidates", () => {
       new Set()
     );
     expect(result.map((r) => r.username)).toEqual(["high", "mid"]);
+  });
+});
+
+describe("selectQualifyingTweets", () => {
+  function tweet(overrides: Partial<RawTweetEntry>): RawTweetEntry {
+    return {
+      id: "1",
+      text: "投稿本文",
+      authorId: "author-1",
+      impressionCount: 2000,
+      postedAt: new Date("2026-01-01T00:00:00Z"),
+      ...overrides,
+    };
+  }
+
+  it("excludes posts below the impression threshold", () => {
+    const result = selectQualifyingTweets([tweet({ impressionCount: 500 })], 1000);
+    expect(result).toHaveLength(0);
+  });
+
+  it("includes posts at or above the impression threshold", () => {
+    const result = selectQualifyingTweets([tweet({ impressionCount: 1000 })], 1000);
+    expect(result).toHaveLength(1);
+  });
+
+  it("excludes posts with no author_id", () => {
+    const result = selectQualifyingTweets([tweet({ authorId: undefined })], 1000);
+    expect(result).toHaveLength(0);
+  });
+
+  it("keeps only the highest-impression post per author", () => {
+    const result = selectQualifyingTweets(
+      [
+        tweet({ id: "1", authorId: "author-1", impressionCount: 1500 }),
+        tweet({ id: "2", authorId: "author-1", impressionCount: 3000 }),
+        tweet({ id: "3", authorId: "author-2", impressionCount: 2000 }),
+      ],
+      1000
+    );
+    expect(result).toHaveLength(2);
+    expect(result.find((r) => r.authorId === "author-1")?.id).toBe("2");
+    expect(result.find((r) => r.authorId === "author-2")?.id).toBe("3");
+  });
+
+  it("sorts qualifying posts by impression count descending", () => {
+    const result = selectQualifyingTweets(
+      [
+        tweet({ id: "1", authorId: "author-1", impressionCount: 1200 }),
+        tweet({ id: "2", authorId: "author-2", impressionCount: 5000 }),
+        tweet({ id: "3", authorId: "author-3", impressionCount: 3000 }),
+      ],
+      1000
+    );
+    expect(result.map((r) => r.id)).toEqual(["2", "3", "1"]);
   });
 });
 
