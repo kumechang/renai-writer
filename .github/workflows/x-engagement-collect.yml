@@ -17,14 +17,16 @@ name: X Engagement - Collect
 # 15分おきに叩く方式を主経路にすること。native scheduleは保険として残す。
 
 on:
-  schedule:
-    # 1日1回(保険)。cron-job.orgが正常に動いている限りこちらは実行されない想定だが、
-    # cron-job.org自体が丸ごと止まった場合の最終防衛ラインとして残す。以前は15分おきに
-    # していたが、cron-job.org(同じく15分おき)と競合してbot.dbのpush時にレース
-    # (バイナリのマージコンフリクト)が発生したため、頻度を落とした
-    # (根本原因はactions/checkoutのref固定で対処済みだが、そもそも同じ処理を
-    # 二重に走らせる必要が無いため)。
-    - cron: "13 3 * * *"
+  # 自動実行は一時停止中(GitHub issueが増えすぎて見づらくなったため、運用者が
+  # 「いったん止めよう」と判断した)。native scheduleを止めるだけでは不十分なので注意:
+  # このワークフローは外部のcronサービス(cron-job.orgなど)からworkflow_dispatch APIを
+  # 15分おきに叩く方式を主経路として運用していたため、on.scheduleを外してもそちらの
+  # 呼び出しは止まらない。そのためjob側にif: falseのガードを入れ、トリガー元が
+  # schedule/workflow_dispatchのどちらであっても実行されないようにしている。
+  # 再開する場合は、下のscheduleのコメントアウトを外し、jobsのifガードも削除すること
+  # (あわせて、cron-job.org側で15分おきの呼び出しを別途止めているかどうかも確認する)。
+  #
+  # - cron: "13 3 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -41,6 +43,9 @@ env:
 jobs:
   collect:
     runs-on: ubuntu-latest
+    # 上記の理由により、workflow_dispatch(手動・外部cron経由問わず)が来ても実行しない。
+    # 再開するときはこの行ごと削除する。
+    if: false
     steps:
       - uses: actions/checkout@v4
         with:
