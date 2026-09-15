@@ -51,6 +51,8 @@ export function buildReplyPromptIssueBody(content: ReplyPromptIssueContent): str
     "",
     "---",
     "返信文が決まったら、Xアプリ等から手動でリプライを投稿し、このissueをクローズしてください。",
+    "**投稿前に、Claude.aiのチャットから返信文だけを正しくコピーできているか" +
+      "(claude.aiの共有リンクなどが誤って混ざっていないか)を必ず確認してください。**",
     "「今回は良いリプライ案が思いつきません」という返答だった場合は、リプライを見送って" +
       "このissueをクローズしてください。",
   ].join("\n");

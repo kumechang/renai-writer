@@ -58,6 +58,14 @@ describe("buildReplyConsolePrompt", () => {
     });
     expect(prompt).toContain("チェック項目");
   });
+
+  it("warns against leaking a claude.ai share link into the reply", () => {
+    const prompt = buildReplyConsolePrompt({
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+    });
+    expect(prompt).toContain("claude.ai");
+  });
 });
 
 describe("buildReplyReviewPrompt", () => {
@@ -89,6 +97,15 @@ describe("buildReplyReviewPrompt", () => {
     });
     expect(prompt).not.toContain("<!--");
     expect(prompt).not.toContain("-->");
+  });
+
+  it("warns against leaking a claude.ai share link into the reply", () => {
+    const prompt = buildReplyReviewPrompt({
+      postText: "最近こんなことを考えている、という投稿。",
+      charLimit: 280,
+      draftReply: "これめっちゃ分かります。",
+    });
+    expect(prompt).toContain("claude.ai");
   });
 });
 
