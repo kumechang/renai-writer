@@ -5,14 +5,15 @@ name: X Post - Collect Trend Words
 # トレンド情報(src/xPoster/trendWords.ts)。生成された投稿は、これを「無理に使う必要は
 # ない」ヒントとして参照する(generatePost.ts等)。
 #
-# トレンドは数時間単位でしか動かないため、x-engagement-collectほどの頻度は不要。
-# 4時間おきに実行する(insurance目的のnative scheduleのみで十分。外部cronサービスに
-# 切り替えたい場合はx-post-generate.ymlと同じ方式でworkflow_dispatchを叩けばよい)。
+# 自動実行は一時停止中(X APIクレジット消費が大きいため)。6クエリ×毎回最大100件読み取り
+# しており、4時間おきに動かすと1日あたり最大$12前後かかる計算になる。運用者が
+# 「いったん完全に止めよう」と判断し、native scheduleを止めた。再開する場合は下のscheduleの
+# コメントアウトを外すか、必要な時だけworkflow_dispatchで手動実行する
+# (max_resultsを100より絞るなどのコスト見直しとあわせて検討すること)。
+#
+# - cron: "7 */4 * * *"
 
 on:
-  schedule:
-    # 4時間おき。0分ちょうどは混雑回避のため7分ずらす。
-    - cron: "7 */4 * * *"
   workflow_dispatch: {}
 
 concurrency:
