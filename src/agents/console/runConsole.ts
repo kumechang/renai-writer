@@ -5,7 +5,7 @@ try {
   // .env が無い場合はそのまま既存の環境変数を使う
 }
 
-import { checkAllPendingIssues, startPlan, startResearch, type IssueRef } from "./run";
+import { checkAllPendingIssues, redraftArticle, startPlan, startResearch, type IssueRef } from "./run";
 
 function parseIssueRef(issue: string): IssueRef {
   const match = issue.match(/^([^/]+)\/([^#]+)#(\d+)$/);
@@ -27,7 +27,9 @@ const USAGE =
   "使い方:\n" +
   '  npm run console -- plan --issue owner/repo#番号\n' +
   '  npm run console -- research --issue owner/repo#番号 --title "調査タイトル" --brief "依頼内容"\n' +
-  "  npm run console -- check --issue owner/repo#番号";
+  "  npm run console -- check --issue owner/repo#番号\n" +
+  "  npm run console -- redraft --issue owner/repo#番号" +
+  "  (同じ企画の他記事の状態を踏まえて執筆プロンプトを取り直す。既存記事の書き直しにも使える)";
 
 // Claude AIへの問いかけをClaude.aiのコンソールで手動実行してもらう運用のCLI。
 // このスクリプト自身はAnthropic APIを一切呼び出さない。事前にAPIサーバー
@@ -60,6 +62,9 @@ async function main() {
       // 自分をトリガーしたissueだけでなく、保留中の全issueをまとめて処理する
       // (GitHub Actions側のconcurrencyキューで実行が取りこぼされた場合の自己修復のため)。
       message = await checkAllPendingIssues(apiBaseUrl, issueRef);
+      break;
+    case "redraft":
+      message = await redraftArticle(issueRef, apiBaseUrl);
       break;
     default:
       throw new Error(USAGE);

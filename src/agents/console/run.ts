@@ -16,6 +16,7 @@ import { createReviewSchema } from "../../schemas/review";
 import { createResearchItemSchema } from "../../schemas/researchItem";
 import { buildEditorPlanningConsolePrompt, buildEditorReviewConsolePrompt } from "../editor/consolePrompt";
 import { buildWriterDraftConsolePrompt, buildWriterRevisionConsolePrompt } from "../writer/consolePrompt";
+import { buildArticleVarietyHint } from "../writer/varietyHint";
 import { buildResearcherConsolePrompt } from "../researcher/consolePrompt";
 import { formatArticleComment } from "../pipeline/formatComment";
 
@@ -334,7 +335,12 @@ async function handlePlanReply(
         "編集者への執筆プロンプトは次のコメントに投稿されます。"
     );
 
-    const draftPrompt = buildWriterDraftConsolePrompt(plan, title);
+    // この時点ではバッチ内の後続記事はまだ執筆されていないため、ヒントに載るのは
+    // 既に原稿がある兄弟記事(通常は先に登録済みの過去の企画のもの)に限られる。
+    // 同じバッチ内の兄弟記事同士の重複は、後から npm run console -- redraft で
+    // 個別に取り直すことで対応する。
+    const varietyHint = await buildArticleVarietyHint(apiBaseUrl, plan.id, article.id);
+    const draftPrompt = buildWriterDraftConsolePrompt(plan, title, undefined, varietyHint);
     const draftPromptComment = await postIssueComment(
       issueRef.owner,
       issueRef.repo,
@@ -377,6 +383,47 @@ async function handlePlanReply(
   });
 
   return `企画を登録し(planId=${plan.id})、${createdArticles.length}件の記事issueを作成しました。`;
+}
+
+// 既に記事issueがある状態で、今の兄弟記事(同じ企画の他記事)の状態を踏まえて
+// 執筆プロンプトを取り直し、新しいコメントとして投稿する。
+//
+// handlePlanReplyは企画作成直後に全タイトル分のプロンプトをまとめて投稿するため、
+// その時点ではまだどの兄弟記事も書かれておらず、重複回避ヒントが効かない
+// (実例: 恋愛の執着をテーマにした企画で、公開済み3記事の書き出し・キメ台詞が
+// ほぼ同じになってしまった)。このコマンドは、実際に兄弟記事の原稿が揃ってから
+// (あるいは既に公開済みの記事を書き直したい場合に)、そのissueに対して個別に
+// 実行する。issueが閉じている・記事が既にaccepted等になっていても構わない
+// (pendingStepの状態は問わず上書きし、新しい原稿が届いたら通常の編集者レビュー
+// プロセスに乗せる)。
+export async function redraftArticle(issueRef: IssueRef, apiBaseUrl: string): Promise<string> {
+  const session = await prisma.issueSession.findUnique({ where: whereIssue(issueRef) });
+  if (!session?.planId || !session.articleId) {
+    throw new Error(
+      "このissueには企画/記事が紐づいていません(内部エラー)。記事issueで実行してください。"
+    );
+  }
+
+  const plan = await fetchJson<PlanResponse>(`${apiBaseUrl}/api/plans/${session.planId}`);
+  const article = await fetchJson<ArticleResponse>(
+    `${apiBaseUrl}/api/plans/${session.planId}/articles/${session.articleId}`
+  );
+  const varietyHint = await buildArticleVarietyHint(apiBaseUrl, session.planId, session.articleId);
+
+  const prompt = buildWriterDraftConsolePrompt(plan, article.title, undefined, varietyHint);
+  const comment = await postIssueComment(issueRef.owner, issueRef.repo, issueRef.number, prompt);
+
+  await prisma.issueSession.update({
+    where: { id: session.id },
+    data: { pendingStep: "draft", pendingPromptCommentId: BigInt(comment.id) },
+  });
+
+  return (
+    `ライターへの執筆プロンプトをissue ${issueRefLabel(issueRef)} に再投稿しました` +
+    `(同じ企画の他記事の状態: ${varietyHint ? "反映しました" : "まだ原稿がありません"})。\n` +
+    `Claude.aiのコンソールに貼り付けて実行し、回答をissueにコメントとして貼り付けたら、\n` +
+    `npm run console -- check --issue ${issueRefLabel(issueRef)} を実行してください。`
+  );
 }
 
 async function handleDraftReply(

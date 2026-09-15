@@ -14,7 +14,11 @@ ${plan.structure}
 // 「ライター」ロール用システムプロンプト。初稿執筆と、レビュー後の修正で
 // 別のプロンプトを用意する。企画変更や採点はライターの仕事ではない。
 
-export function buildWriterDraftSystemPrompt(plan: PlanResponse, title: string): string {
+export function buildWriterDraftSystemPrompt(
+  plan: PlanResponse,
+  title: string,
+  varietyHint?: string | null
+): string {
   return `あなたは恋愛メディアの記事制作チームに所属する「ライター」です。
 チームには他に「編集者」（企画立案・記事の添削）と「調査員」（Web調査）がいますが、
 この段階でのあなたの仕事は次の一つだけです。
@@ -26,7 +30,7 @@ export function buildWriterDraftSystemPrompt(plan: PlanResponse, title: string):
 # 企画内容
 
 ${formatPlan(plan, title)}
-
+${varietyHint ? `\n# 他記事との重複回避\n\n${varietyHint}\n` : ""}
 # 執筆の指示
 
 - タイトルは上記のタイトルをそのまま使ってください。
