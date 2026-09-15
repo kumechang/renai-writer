@@ -56,7 +56,9 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
   const excerptLength = input.published ? EXCERPT_LENGTH : TEASER_EXCERPT_LENGTH;
 
   const publicationStatusNote = input.published
-    ? "この記事は既に他媒体で公開済みです。読者を記事へ誘導するため、内容を具体的に紹介してください。"
+    ? "この記事は既に他媒体で公開済みです。ただし、記事へ誘導することよりも、この投稿自体が" +
+      "読者にとって独立して価値のある内容になることを優先してください" +
+      "(気になった人が結果的に記事にもたどり着く、という順番で構いません)。"
     : "この記事はまだ他媒体で公開されていません。今回の投稿では内容の具体的な詳細・結論・" +
       "引用を一切明かさず、「今度こんなテーマで記事を書いた」という程度の匂わせに留めてください。" +
       "読者の期待感を作ることが目的で、内容を先取りして満足させてしまわないようにしてください。";

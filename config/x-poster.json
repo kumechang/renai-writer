@@ -12,7 +12,7 @@
   "minSpacingHours": 1,
   "repromotionCooldownDays": 3,
   "recentFeedbackWindow": 10,
-  "standalonePostRatio": 0.3,
+  "standalonePostRatio": 0.5,
   "recentPostsForVarietyWindow": 5,
   "urlPostsPerDay": 1,
   "trendWordsLimit": 8,
