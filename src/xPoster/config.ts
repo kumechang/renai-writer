@@ -45,6 +45,10 @@ export interface XPosterConfig {
   // 記事URL付きスレッドと同様、自動選択の際に毎回この確率で試み、対象(まだ3トピックを
   // 出し尽くしていない公開済み記事)が無ければ通常フローにフォールバックする。
   behindTheScenesPostRatio: number;
+  // 読者に保存(ブックマーク)されることを狙った「保存型」投稿(記事に紐づかない1ツイート)を
+  // 選ぶ確率(0〜1)。共感系の投稿はいいねは付いても保存・フォローに結びつきにくかったため、
+  // 持ち帰れる中身のある投稿を一定の割合で混ぜる。
+  saveWorthyPostRatio: number;
 }
 
 const CONFIG_PATH = path.resolve(process.cwd(), "config/x-poster.json");

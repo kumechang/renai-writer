@@ -2,7 +2,7 @@ import { prisma } from "../db/client";
 
 const SUCCESSFUL_STATUSES = ["posted", "posted_dryrun"];
 
-export type VarietyScope = { articleId: string } | { standalone: true };
+export type VarietyScope = { articleId: string } | { standalone: true } | { postKind: string };
 
 // 同じ記事(または単発投稿)を何度も同じ切り口・同じ引用で書いてしまわないよう、
 // 直近の投稿本文をプロンプトに渡して「違う切り口で書く」よう促すためのヒント
@@ -11,7 +11,9 @@ export async function buildVarietyHint(scope: VarietyScope, window: number): Pro
   const where =
     "articleId" in scope
       ? { articleId: scope.articleId, status: { in: SUCCESSFUL_STATUSES } }
-      : { articleId: null, status: { in: SUCCESSFUL_STATUSES } };
+      : "postKind" in scope
+        ? { postKind: scope.postKind, status: { in: SUCCESSFUL_STATUSES } }
+        : { articleId: null, status: { in: SUCCESSFUL_STATUSES } };
 
   const posts = await prisma.xPost.findMany({
     where,

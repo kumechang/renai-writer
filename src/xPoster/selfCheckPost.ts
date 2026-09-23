@@ -2,6 +2,7 @@ import { z } from "zod";
 import { loadPromptTemplate, renderPrompt } from "./promptLoader";
 import { callClaudeJson } from "./jsonRetry";
 import { buildArticleExcerpt } from "./generatePost";
+import { bookmarkReviewSchema, buildBookmarkReviewSection, loadReaderPersonas } from "./bookmarkReview";
 
 // X投稿セルフチェック.md の出力JSON形式。合否に関わらずfinal_postには
 // (不合格なら修正済みの)最終候補本文が入る想定。
@@ -14,6 +15,7 @@ export const selfCheckSchema = z.object({
   problems: z.array(z.string()),
   improvements: z.array(z.string()),
   final_post: z.string().min(1, "final_post must not be empty"),
+  bookmark_review: bookmarkReviewSchema,
 });
 
 export type SelfCheckResult = z.infer<typeof selfCheckSchema>;
@@ -44,6 +46,7 @@ export async function selfCheckPost(
       ? ""
       : "- この記事はまだ他媒体で公開されていません。内容の具体的な詳細・結論・引用を" +
         "明かしてしまっていないか(匂わせ程度に留まっているか)を厳しく確認してください。",
+    bookmark_review_section: buildBookmarkReviewSection(loadReaderPersonas(), false),
   });
 
   const result = await callClaudeJson(model, prompt, selfCheckSchema);

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { loadPromptTemplate, renderPrompt } from "./promptLoader";
 import { callClaudeJson } from "./jsonRetry";
+import { bookmarkReviewSchema, buildBookmarkReviewSection, loadReaderPersonas } from "./bookmarkReview";
 
 // final_hook/final_payoffのmin(1)は、通常のセルフチェックで実際に発生した
 // 「合格時はfinal_postが空でよいとモデルが誤解する」不具合の再発防止と同じ考え方。
@@ -11,6 +12,7 @@ export const standaloneSelfCheckSchema = z.object({
   improvements: z.array(z.string()),
   final_hook: z.string().min(1, "final_hook must not be empty"),
   final_payoff: z.string().min(1, "final_payoff must not be empty"),
+  bookmark_review: bookmarkReviewSchema,
 });
 
 export type StandaloneSelfCheckResult = z.infer<typeof standaloneSelfCheckSchema>;
@@ -33,6 +35,7 @@ export async function selfCheckStandalonePost(
     hook: input.hook,
     payoff: input.payoff,
     char_limit: String(input.charLimit),
+    bookmark_review_section: buildBookmarkReviewSection(loadReaderPersonas(), false),
   });
 
   const result = await callClaudeJson(model, prompt, standaloneSelfCheckSchema);

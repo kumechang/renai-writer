@@ -243,6 +243,20 @@ ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚�
    のように次のコメントを匂わせる終わり方で問題提起・あるあるを書き、話が完結する
    手前で切る。2件目は1件目への返信として、その問題への気づき・答えを書く。
 
+### 保存型投稿とペルソナによる保存判定
+
+共感系の投稿はいいねは付いても保存(ブックマーク)が付かず、フォローに結びつきにくかった
+ため、次の2つの仕組みを入れている。
+
+- **保存型投稿**(`postKind=save_worthy`): 記事URL付きスレッドに当たらなかった場合、
+  `saveWorthyPostRatio`(既定0.3)の確率で、記事に紐づかない1ツイートの「保存型」投稿を作る
+  (`generateSaveWorthyPost.ts` / `X投稿生成_保存型.md`)。置き換え行動型・チェックリスト型・
+  お守りの言葉型のいずれかをランダムに選び、途中で切らず投稿単体で持ち帰れる中身を書かせる。
+- **保存判定**: すべての投稿種別のセルフチェックで、`config/x_reader_personas.md`の想定読者
+  ペルソナごとに「この投稿をブックマークするか」を判定させ、承認issueに表示する。保存型投稿では
+  少なくとも1人が保存する判定であることを合格条件にし、それ以外の種別では採点に含めない
+  参考情報として記録する(`selfCheckJson`の`bookmark_review`)。
+
 ### 記事issueの公開状況(オープン=未公開/クローズ=公開済み)
 
 記事issue(sub-issue)が**オープンのままか、運用者が手動でクローズしたか**を、X投稿生成時に
@@ -332,9 +346,10 @@ Xの直近投稿を検索し、よく使われているハッシュタグを自�
 ### 設定・関連コマンド
 
 設定は `config/x-poster.json`（承認モード・使用モデル・文字数上限・1日の目標投稿数・
-投稿可能時間帯・再宣伝までの日数・単発投稿の比率(`standalonePostRatio`)・記事URL付き投稿の
-1日の上限(`urlPostsPerDay`)・トレンドワードの件数(`trendWordsLimit`)など）と
-`config/x_account_info.md`（Xアカウントのペルソナ・トーン）で調整する。
+投稿可能時間帯・再宣伝までの日数・単発投稿の比率(`standalonePostRatio`)・保存型投稿の比率
+(`saveWorthyPostRatio`)・記事URL付き投稿の1日の上限(`urlPostsPerDay`)・トレンドワードの件数
+(`trendWordsLimit`)など）と`config/x_account_info.md`（Xアカウントのペルソナ・トーン）、
+`config/x_reader_personas.md`（保存判定に使う想定読者ペルソナ）で調整する。
 
 ```bash
 npm run x-post:generate               # 投稿文生成(自動選択 or --issue指定)

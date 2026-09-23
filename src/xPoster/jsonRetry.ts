@@ -1,4 +1,4 @@
-import type { ZodType } from "zod";
+import type { ZodType, ZodTypeDef } from "zod";
 import { callClaude } from "./claudeClient";
 
 // セルフチェックはJSON出力必須のため、このモジュールで共通化している
@@ -25,7 +25,7 @@ function extractJson(text: string): unknown {
 export async function callClaudeJson<T>(
   model: string,
   prompt: string,
-  schema: ZodType<T>
+  schema: ZodType<T, ZodTypeDef, unknown>
 ): Promise<{ raw: string; data: T }> {
   const firstAttempt = await callClaude(model, prompt);
   try {
