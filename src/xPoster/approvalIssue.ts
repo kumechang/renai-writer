@@ -1,5 +1,6 @@
 import { createIssue, type CreatedIssue } from "../lib/github";
 import { PENDING_X_POST_APPROVAL_LABEL } from "./approval";
+import type { BookmarkReview } from "./bookmarkReview";
 
 export interface ApprovalIssueContent {
   // 記事に紐づかない単発投稿の場合はnull。
@@ -15,6 +16,8 @@ export interface ApprovalIssueContent {
   pass: boolean;
   problems: string[];
   improvements: string[];
+  // 想定読者ペルソナごとの保存(ブックマーク)判定。セルフチェックが判定を返さなかった場合は空。
+  bookmarkReview?: BookmarkReview;
   // 承認issueを作成するリポジトリ。
   repoOwner: string;
   repoName: string;
@@ -62,12 +65,23 @@ export function buildIssueBody(content: ApprovalIssueContent): string {
     "## 改善点",
     improvements,
     "",
+    ...formatBookmarkReview(content.bookmarkReview ?? []),
     "---",
     "この投稿を承認する場合はコメントで「承認」、却下する場合は「却下」と入力してください。",
     "却下する場合、「却下 もう少し落ち着いたトーンがいい」のように理由を続けて書くと記録されます。"
   );
 
   return lines.join("\n");
+}
+
+function formatBookmarkReview(review: BookmarkReview): string[] {
+  if (review.length === 0) return [];
+  const saved = review.filter((verdict) => verdict.would_bookmark).length;
+  return [
+    `## 保存判定(想定読者ペルソナ): ${saved} / ${review.length}人が保存`,
+    ...review.map((verdict) => `- ${verdict.persona}: ${verdict.would_bookmark ? "保存する" : "保存しない"} — ${verdict.reason}`),
+    "",
+  ];
 }
 
 export async function createXPostApprovalIssue(content: ApprovalIssueContent): Promise<CreatedIssue> {

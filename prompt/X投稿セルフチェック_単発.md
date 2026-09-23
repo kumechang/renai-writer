@@ -45,6 +45,8 @@
 入れてください。修正不要な場合は元の本文をそのまま(一字一句変えずに)入れてください。
 どちらも空にすることは絶対にしないでください。
 
+{{bookmark_review_section}}
+
 # 出力
 
 JSONのみ。
@@ -55,5 +57,8 @@ JSONのみ。
   "problems": [],
   "improvements": [],
   "final_hook": "",
-  "final_payoff": ""
+  "final_payoff": "",
+  "bookmark_review": [
+    { "persona": "", "would_bookmark": false, "reason": "" }
+  ]
 }

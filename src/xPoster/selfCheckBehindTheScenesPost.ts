@@ -3,6 +3,7 @@ import { callClaudeJson } from "./jsonRetry";
 import { buildArticleExcerpt } from "./generatePost";
 import { buildTopicMaterial, type TopicMaterialInput } from "./generateBehindTheScenesPost";
 import { selfCheckSchema, type SelfCheckResult } from "./selfCheckPost";
+import { bookmarkReviewSchema, buildBookmarkReviewSection, loadReaderPersonas } from "./bookmarkReview";
 
 export interface SelfCheckBehindTheScenesPostInput {
   generatedPost: string;
@@ -29,6 +30,7 @@ export async function selfCheckBehindTheScenesPost(
     topic_label: topicMaterial.label,
     topic_material: topicMaterial.material,
     char_limit: String(input.charLimit),
+    bookmark_review_section: buildBookmarkReviewSection(loadReaderPersonas(), false),
   });
 
   const result = await callClaudeJson(model, prompt, selfCheckSchema);

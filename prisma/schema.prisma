@@ -197,6 +197,7 @@ model XPost {
 
   // promo: 記事紹介(通常投稿) / standalone: 記事に紐づかない単発投稿 /
   // url_thread: 記事URL付きスレッド / behind_the_scenes: 制作裏話(テーマ/タイトル/構成の解説)。
+  // save_worthy: 読者に保存(ブックマーク)されることを狙った、記事に紐づかない1ツイートの投稿。
   // selectArticleForPost(記事紹介の再選定)はbehind_the_scenesを「宣伝済み」に数えない
   // (販促とは別チャンネルの投稿のため)。
   postKind String @default("promo")

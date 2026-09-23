@@ -144,6 +144,7 @@ describe("buildIssueBody", () => {
     problems: [],
     improvements: [],
     final_post: "冒頭の一文。続きは記事で。",
+    bookmark_review: [],
   };
 
   it("includes the final text, score, and source issue link", () => {

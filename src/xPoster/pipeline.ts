@@ -18,6 +18,9 @@ import { selectArticleForPost, PROMOTABLE_ARTICLE_STATUSES } from "./selectArtic
 import { findOriginSession, isArticlePublished } from "./articlePublication";
 import { hasReachedDailyUrlPostLimit, findUrlThreadCandidate } from "./urlThreadCandidate";
 import { selectBehindTheScenesTarget } from "./selectBehindTheScenesTarget";
+import { generateSaveWorthyPost, pickSaveWorthyType, SAVE_WORTHY_POST_KIND } from "./generateSaveWorthyPost";
+import { selfCheckSaveWorthyPost } from "./selfCheckSaveWorthyPost";
+import type { BookmarkReview } from "./bookmarkReview";
 
 // 生成+セルフチェックのやり直し(config.maxGenerateRetries)でも文字数超過が
 // 解消しない場合の最終手段として、専用の短縮パスを最大この回数まで試す
@@ -59,6 +62,7 @@ interface SelfCheckData {
   pass: boolean;
   problems: string[];
   improvements: string[];
+  bookmark_review: BookmarkReview;
 }
 
 interface PersistAndDispatchInput {
@@ -88,6 +92,8 @@ interface PersistAndDispatchInput {
 // 対象が見つからなければ通常のフローにフォールバックする。単発投稿(記事に紐づかない投稿)は
 // 自分でコメント(返信)を付けた投稿の方がインプレッションが伸びる傾向が見られたため、
 // 常に「問題提起→回答」の2ツイート構成スレッドで作る(tryGenerateStandaloneThreadPost)。
+// 記事URL付きスレッドに当たらなかった場合は、config.saveWorthyPostRatioの確率で
+// 保存(ブックマーク)されることを狙った保存型投稿を作る(generateSaveWorthyXPost)。
 export async function generateXPost(options: GenerateXPostOptions = {}): Promise<GenerateXPostResult> {
   const config = loadXPosterConfig();
 
@@ -104,6 +110,10 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
 
     const urlThreadResult = await tryGenerateUrlThreadPost(config, repo);
     if (urlThreadResult) return urlThreadResult;
+
+    if (Math.random() < config.saveWorthyPostRatio) {
+      return generateSaveWorthyXPost(config, repo);
+    }
   }
 
   const target = await resolveTarget(options, config);
@@ -470,6 +480,76 @@ async function tryGenerateBehindTheScenesPost(
   });
 }
 
+// 読者に保存(ブックマーク)されることを狙った、記事に紐づかない1ツイートの投稿を作る。
+// 保存される理由は投稿の中身そのものなので、スレッドに分けず1件目で完結させる。
+async function generateSaveWorthyXPost(config: XPosterConfig, repo: Repo): Promise<GenerateXPostResult> {
+  const saveType = pickSaveWorthyType();
+
+  const generate = () =>
+    generateSaveWorthyPost(config.claudeModel, {
+      saveType,
+      charLimit: config.xCharLimit,
+      recentFeedbackWindow: config.recentFeedbackWindow,
+      recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+    });
+
+  const runSelfCheckFor = (generatedText: string) =>
+    selfCheckSaveWorthyPost(config.claudeModel, {
+      generatedPost: generatedText,
+      saveType,
+      charLimit: config.xCharLimit,
+      passThreshold: config.selfCheckPassThreshold,
+    });
+
+  let generatedText = await generate();
+  let selfCheck = await runSelfCheckFor(generatedText);
+  let finalText = selfCheck.data.final_post;
+  let weightedLength = getWeightedLength(finalText);
+
+  for (
+    let attempt = 1;
+    weightedLength > config.xCharLimit && attempt <= config.maxGenerateRetries;
+    attempt++
+  ) {
+    generatedText = await generate();
+    selfCheck = await runSelfCheckFor(generatedText);
+    finalText = selfCheck.data.final_post;
+    weightedLength = getWeightedLength(finalText);
+  }
+
+  for (
+    let attempt = 1;
+    weightedLength > config.xCharLimit && attempt <= MAX_SHORTEN_ATTEMPTS;
+    attempt++
+  ) {
+    finalText = await shortenPost(config.claudeModel, finalText, config.xCharLimit, attempt);
+    weightedLength = getWeightedLength(finalText);
+  }
+
+  if (weightedLength > config.xCharLimit) {
+    throw new Error(
+      `保存型投稿が文字数上限を超過したままです(規定回数のやり直し・短縮後も解消せず): ${weightedLength} > ${config.xCharLimit}`
+    );
+  }
+
+  return persistAndDispatch({
+    articleId: null,
+    articleTitle: null,
+    draftId: null,
+    articleUrl: null,
+    generatedText,
+    finalText,
+    replyText: null,
+    selfCheckJson: JSON.stringify({ ...selfCheck.data, save_type: saveType.label }),
+    selfCheckData: selfCheck.data,
+    repo,
+    sourceIssueNumber: null,
+    approvalMode: config.approvalMode,
+    postKind: SAVE_WORTHY_POST_KIND,
+    behindTheScenesTopic: null,
+  });
+}
+
 // XPostのDB作成 → (GITHUB_TOKENがあれば)承認issue作成 → autoモードかつ合格ならその場で
 // 投稿、までをまとめる共通処理。通常投稿・記事URL付きスレッド投稿のどちらの経路からも使う。
 async function persistAndDispatch(input: PersistAndDispatchInput): Promise<GenerateXPostResult> {
@@ -513,6 +593,7 @@ async function persistAndDispatch(input: PersistAndDispatchInput): Promise<Gener
     pass: input.selfCheckData.pass,
     problems: input.selfCheckData.problems,
     improvements: input.selfCheckData.improvements,
+    bookmarkReview: input.selfCheckData.bookmark_review,
     repoOwner: input.repo.owner,
     repoName: input.repo.repo,
     sourceIssueNumber: input.sourceIssueNumber,

@@ -55,6 +55,8 @@
 - 不合格、または文字数超過の場合: 問題点を修正した本文を入れてください。
 `final_post`を空にすることは絶対にしないでください。
 
+{{bookmark_review_section}}
+
 # 出力
 
 JSONのみ。
@@ -64,5 +66,8 @@ JSONのみ。
   "pass": true,
   "problems": [],
   "improvements": [],
-  "final_post": ""
+  "final_post": "",
+  "bookmark_review": [
+    { "persona": "", "would_bookmark": false, "reason": "" }
+  ]
 }
