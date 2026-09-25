@@ -3,7 +3,7 @@ import { loadPromptTemplate, loadConfigDoc, renderPrompt } from "./promptLoader"
 import { callClaudeJson } from "./jsonRetry";
 import { buildArticleExcerpt } from "./generatePost";
 import { buildFeedbackHint } from "./feedbackHint";
-import { buildVarietyHint } from "./varietyHint";
+import { buildRecentOpeningsHint, buildVarietyHint } from "./varietyHint";
 import { buildTrendHint } from "./trendWords";
 
 export const urlThreadPostSchema = z.object({
@@ -20,11 +20,13 @@ export interface GenerateUrlThreadPostInput {
   charLimit: number;
   recentFeedbackWindow: number;
   recentPostsForVarietyWindow: number;
+  recentOpeningsWindow: number;
   trendWordsLimit: number;
 }
 
 // 公開済み記事を、記事URL付きの2ツイート構成(スレッド)で紹介する投稿を生成する。
-// 1件目(hook)は話の途中で切れる導入、2件目(payoff)がその続き(核心)。
+// 1件目(hook)は記事の気づきを一つ選んで答えまで完結させ、2件目(payoff)で記事にある
+// 具体的な方法・理由を足す。
 // 記事URL自体はここでは生成せず、投稿時にpayoffへ別途付与する。
 export async function generateUrlThreadPost(
   model: string,
@@ -37,6 +39,7 @@ export async function generateUrlThreadPost(
   const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
   const varietyHint = await buildVarietyHint({ articleId: input.articleId }, input.recentPostsForVarietyWindow);
   const trendHint = await buildTrendHint(input.trendWordsLimit);
+  const recentOpeningsHint = await buildRecentOpeningsHint(input.recentOpeningsWindow);
 
   const prompt = renderPrompt(template, {
     account_info: accountInfo,
@@ -48,6 +51,7 @@ export async function generateUrlThreadPost(
     feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
     variety_hint: varietyHint ?? "(この記事からの投稿はまだありません)",
     trend_hint: trendHint ?? "(トレンドワードは未収集です)",
+    recent_openings_hint: recentOpeningsHint ?? "(まだ投稿はありません)",
   });
 
   const { data } = await callClaudeJson(model, prompt, urlThreadPostSchema);

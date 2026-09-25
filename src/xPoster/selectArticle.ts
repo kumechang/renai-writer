@@ -18,7 +18,7 @@ function pickRandom<T>(items: T[]): T {
 // (「毎回投稿を考えるときに完成記事の中からネタを拾ってほしい」という運用を想定し、
 // issue番号を都度指定しなくても済むようにする)。
 //
-// 1日8件ペースなど、書き下ろし記事だけでは目標本数を満たせない運用を想定し、
+// 毎日投稿するなど、書き下ろし記事だけでは目標本数を満たせない運用を想定し、
 // 未宣伝の記事が無くなった場合はcooldownDays日以上前に宣伝した記事を再選択候補にする
 // (処理中(pending_approval/approved)の記事は、古さに関わらず再選択しない)。
 export async function selectArticleForPost(cooldownDays: number): Promise<Article> {

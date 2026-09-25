@@ -2,7 +2,7 @@ import { z } from "zod";
 import { loadPromptTemplate, loadConfigDoc, renderPrompt } from "./promptLoader";
 import { callClaudeJson } from "./jsonRetry";
 import { buildFeedbackHint } from "./feedbackHint";
-import { buildVarietyHint } from "./varietyHint";
+import { buildRecentOpeningsHint, buildVarietyHint } from "./varietyHint";
 import { buildTrendHint } from "./trendWords";
 
 export const standalonePostSchema = z.object({
@@ -16,12 +16,13 @@ export interface GenerateStandalonePostInput {
   charLimit: number;
   recentFeedbackWindow: number;
   recentPostsForVarietyWindow: number;
+  recentOpeningsWindow: number;
   trendWordsLimit: number;
 }
 
 // 記事に紐づかない「単発投稿」(恋愛系の一般的な投稿)を、2ツイート構成(スレッド)で
-// Claudeに生成させる。1件目(hook)は問題提起・あるあるで話の途中で切れる導入、
-// 2件目(payoff)がその答え・気づき(1件目への返信として投稿する)。
+// Claudeに生成させる。タイムラインでは1件目しか読まれないため、1件目(hook)で場面と
+// 気づき・答えまで完結させ、2件目(payoff、1件目への返信)で具体例・深掘りを足す。
 // 自分でコメント(返信)を付けた投稿の方がインプレッションが伸びる傾向が見られたため、
 // 記事URL付きスレッドと同じ2ツイート構成を単発投稿にも採用している。
 // 宣伝可能な記事が無い場合のフォールバックとして、または記事宣伝だけに偏らないための
@@ -38,6 +39,7 @@ export async function generateStandalonePost(
   const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
   const varietyHint = await buildVarietyHint({ standalone: true }, input.recentPostsForVarietyWindow);
   const trendHint = await buildTrendHint(input.trendWordsLimit);
+  const recentOpeningsHint = await buildRecentOpeningsHint(input.recentOpeningsWindow);
 
   const prompt = renderPrompt(template, {
     account_info: accountInfo,
@@ -45,6 +47,7 @@ export async function generateStandalonePost(
     feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
     variety_hint: varietyHint ?? "(まだ過去の単発投稿はありません)",
     trend_hint: trendHint ?? "(トレンドワードは未収集です)",
+    recent_openings_hint: recentOpeningsHint ?? "(まだ投稿はありません)",
   });
 
   const { data } = await callClaudeJson(model, prompt, standalonePostSchema);
