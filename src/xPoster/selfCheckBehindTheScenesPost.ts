@@ -3,7 +3,8 @@ import { callClaudeJson } from "./jsonRetry";
 import { buildArticleExcerpt } from "./generatePost";
 import { buildTopicMaterial, type TopicMaterialInput } from "./generateBehindTheScenesPost";
 import { selfCheckSchema, type SelfCheckResult } from "./selfCheckPost";
-import { bookmarkReviewSchema, buildBookmarkReviewSection, loadReaderPersonas } from "./bookmarkReview";
+import { buildBookmarkReviewSection, loadReaderPersonas } from "./bookmarkReview";
+import { applySafetyGate, buildSafetyCheckSection } from "./safetyCheck";
 
 export interface SelfCheckBehindTheScenesPostInput {
   generatedPost: string;
@@ -30,6 +31,7 @@ export async function selfCheckBehindTheScenesPost(
     topic_label: topicMaterial.label,
     topic_material: topicMaterial.material,
     char_limit: String(input.charLimit),
+    safety_check_section: buildSafetyCheckSection(),
     bookmark_review_section: buildBookmarkReviewSection(loadReaderPersonas(), false),
   });
 
@@ -38,5 +40,5 @@ export async function selfCheckBehindTheScenesPost(
   // 実際の合否判定はconfig.selfCheckPassThresholdで上書きする
   // (selfCheckPost.tsと同じ考え方)。
   const pass = result.data.score >= input.passThreshold;
-  return { raw: result.raw, data: { ...result.data, pass } };
+  return { raw: result.raw, data: applySafetyGate({ ...result.data, pass }) };
 }

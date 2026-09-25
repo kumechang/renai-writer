@@ -14,7 +14,7 @@ import { computePostingProbability, countRemainingActiveHours } from "../src/xPo
 import { isWithinPostingWindow } from "../src/xPoster/postingWindow";
 import type { XPosterConfig } from "../src/xPoster/config";
 import { buildVarietyHint } from "../src/xPoster/varietyHint";
-import { hasReachedDailyUrlPostLimit, findUrlThreadCandidate } from "../src/xPoster/urlThreadCandidate";
+import { hasReachedWeeklyUrlPostLimit, findUrlThreadCandidate } from "../src/xPoster/urlThreadCandidate";
 import { selectBehindTheScenesTarget } from "../src/xPoster/selectBehindTheScenesTarget";
 import { buildTopicMaterial } from "../src/xPoster/generateBehindTheScenesPost";
 import * as articlePublication from "../src/xPoster/articlePublication";
@@ -144,6 +144,7 @@ describe("buildIssueBody", () => {
     problems: [],
     improvements: [],
     final_post: "冒頭の一文。続きは記事で。",
+    safety_violations: [],
     bookmark_review: [],
   };
 
@@ -395,7 +396,7 @@ describe("selectArticleForPost", () => {
   });
 });
 
-describe("hasReachedDailyUrlPostLimit", () => {
+describe("hasReachedWeeklyUrlPostLimit", () => {
   beforeEach(async () => {
     await prisma.xPost.deleteMany();
     await prisma.article.deleteMany();
@@ -406,45 +407,48 @@ describe("hasReachedDailyUrlPostLimit", () => {
     await prisma.$disconnect();
   });
 
-  it("treats a non-positive daily limit as already reached", async () => {
-    expect(await hasReachedDailyUrlPostLimit(0)).toBe(true);
+  it("treats a non-positive limit as already reached", async () => {
+    expect(await hasReachedWeeklyUrlPostLimit(0)).toBe(true);
   });
 
-  it("is not reached when there are no article-URL posts today", async () => {
-    expect(await hasReachedDailyUrlPostLimit(1)).toBe(false);
+  it("is not reached when there are no article-URL posts in the last 7 days", async () => {
+    expect(await hasReachedWeeklyUrlPostLimit(1)).toBe(false);
   });
 
-  it("is reached once today's count meets the limit", async () => {
+  it("counts posts from earlier in the week, not just today", async () => {
+    for (const daysAgo of [0, 6]) {
+      await prisma.xPost.create({
+        data: {
+          articleUrl: "https://example.com/articles/1",
+          generatedText: "本文",
+          finalText: "本文",
+          status: "posted",
+          createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+    expect(await hasReachedWeeklyUrlPostLimit(3)).toBe(false);
+    expect(await hasReachedWeeklyUrlPostLimit(2)).toBe(true);
+  });
+
+  it("does not count article-URL posts older than 7 days", async () => {
     await prisma.xPost.create({
       data: {
         articleUrl: "https://example.com/articles/1",
         generatedText: "本文",
         finalText: "本文",
         status: "posted",
+        createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
       },
     });
-    expect(await hasReachedDailyUrlPostLimit(1)).toBe(true);
-  });
-
-  it("does not count article-URL posts from a previous day", async () => {
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    await prisma.xPost.create({
-      data: {
-        articleUrl: "https://example.com/articles/1",
-        generatedText: "本文",
-        finalText: "本文",
-        status: "posted",
-        createdAt: yesterday,
-      },
-    });
-    expect(await hasReachedDailyUrlPostLimit(1)).toBe(false);
+    expect(await hasReachedWeeklyUrlPostLimit(1)).toBe(false);
   });
 
   it("ignores posts without an article URL", async () => {
     await prisma.xPost.create({
       data: { generatedText: "本文", finalText: "本文", status: "posted" },
     });
-    expect(await hasReachedDailyUrlPostLimit(1)).toBe(false);
+    expect(await hasReachedWeeklyUrlPostLimit(1)).toBe(false);
   });
 
   it("does not count rejected/failed article-URL posts toward the limit", async () => {
@@ -456,7 +460,7 @@ describe("hasReachedDailyUrlPostLimit", () => {
         status: "rejected",
       },
     });
-    expect(await hasReachedDailyUrlPostLimit(1)).toBe(false);
+    expect(await hasReachedWeeklyUrlPostLimit(1)).toBe(false);
   });
 });
 

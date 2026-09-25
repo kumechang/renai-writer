@@ -1,6 +1,7 @@
 import type { IssueSession } from "@prisma/client";
 import { prisma } from "../db/client";
 import { getIssueState, getLastCommentUrl } from "../lib/github";
+import { loadXPosterConfig } from "./config";
 
 // 記事(Article)を書いたsub-issueを、IssueSessionから逆引きする。
 export async function findOriginSession(articleId: string): Promise<IssueSession | null> {
@@ -20,13 +21,25 @@ export async function isArticlePublished(originSession: IssueSession | null): Pr
   }
 }
 
-// クローズ済み記事issueの最後のコメントから、運用者が貼った記事の公開先URLを取得する。
+// クローズ済み記事issueのコメントから、運用者が貼った記事の公開先URLを取得する。
+// config.publishedArticleUrlPatternに一致するURLだけを公開先として扱う。
 // 見つからない、または取得に失敗した場合はnull。
 export async function findPublishedArticleUrl(originSession: IssueSession | null): Promise<string | null> {
   if (!originSession) return null;
+  const isAllowed = buildPublishedArticleUrlMatcher(loadXPosterConfig().publishedArticleUrlPattern);
   try {
-    return await getLastCommentUrl(originSession.issueOwner, originSession.issueRepo, originSession.issueNumber);
+    return await getLastCommentUrl(
+      originSession.issueOwner,
+      originSession.issueRepo,
+      originSession.issueNumber,
+      isAllowed
+    );
   } catch {
     return null;
   }
+}
+
+export function buildPublishedArticleUrlMatcher(pattern: string): (url: string) => boolean {
+  const regex = new RegExp(pattern);
+  return (url) => regex.test(url);
 }
