@@ -16,7 +16,7 @@ import { finalizeXPost } from "./finalizePost";
 import { parseGithubRepository } from "./env";
 import { selectArticleForPost, PROMOTABLE_ARTICLE_STATUSES } from "./selectArticle";
 import { findOriginSession, isArticlePublished } from "./articlePublication";
-import { hasReachedDailyUrlPostLimit, findUrlThreadCandidate } from "./urlThreadCandidate";
+import { hasReachedWeeklyUrlPostLimit, findUrlThreadCandidate } from "./urlThreadCandidate";
 import { selectBehindTheScenesTarget } from "./selectBehindTheScenesTarget";
 import { generateSaveWorthyPost, pickSaveWorthyType, SAVE_WORTHY_POST_KIND } from "./generateSaveWorthyPost";
 import { selfCheckSaveWorthyPost } from "./selfCheckSaveWorthyPost";
@@ -88,7 +88,7 @@ interface PersistAndDispatchInput {
 // その場で投稿まで行う(amazon-sentaku-shiageのgenerateCandidate.tsと同じ構成)。
 //
 // ただし記事を明示指定していない自動選択の場合、まず記事URL付きの2ツイート構成スレッド
-// (公開済み記事のissueに貼られたURLを使う投稿)を1日urlPostsPerDay件まで優先的に試す。
+// (公開済み記事のissueに貼られたURLを使う投稿)を直近7日間でurlPostsPerWeek件まで優先的に試す。
 // 対象が見つからなければ通常のフローにフォールバックする。単発投稿(記事に紐づかない投稿)は
 // 自分でコメント(返信)を付けた投稿の方がインプレッションが伸びる傾向が見られたため、
 // 常に「問題提起→回答」の2ツイート構成スレッドで作る(tryGenerateStandaloneThreadPost)。
@@ -282,16 +282,16 @@ async function generateStandaloneThreadPost(config: XPosterConfig, repo: Repo): 
   });
 }
 
-// 記事URL付きの2ツイート構成スレッド(hook→core+URLへの返信)を1件作る。今日(JST)の
-// 上限に達している、または対象になる記事(公開済み・最後のコメントにURLあり・処理中/
+// 記事URL付きの2ツイート構成スレッド(hook→core+URLへの返信)を1件作る。直近7日間の
+// 上限に達している、または対象になる記事(公開済み・コメントに公開先URLあり・処理中/
 // クールダウン中でない)が無ければnullを返し、呼び出し元は通常フローにフォールバックする。
 async function tryGenerateUrlThreadPost(
   config: XPosterConfig,
   repo: Repo
 ): Promise<GenerateXPostResult | null> {
-  if (await hasReachedDailyUrlPostLimit(config.urlPostsPerDay)) return null;
+  if (await hasReachedWeeklyUrlPostLimit(config.urlPostsPerWeek)) return null;
 
-  const candidate = await findUrlThreadCandidate(config.repromotionCooldownDays);
+  const candidate = await findUrlThreadCandidate(config.urlThreadCooldownDays);
   if (!candidate) return null;
 
   const { article, draft, articleUrl } = candidate;

@@ -3,6 +3,7 @@ import { callClaudeJson } from "./jsonRetry";
 import { selfCheckSchema, type SelfCheckResult } from "./selfCheckPost";
 import { buildBookmarkReviewSection, countBookmarkers, loadReaderPersonas } from "./bookmarkReview";
 import type { SaveWorthyType } from "./generateSaveWorthyPost";
+import { applySafetyGate, buildSafetyCheckSection } from "./safetyCheck";
 
 export interface SelfCheckSaveWorthyPostInput {
   generatedPost: string;
@@ -23,12 +24,13 @@ export async function selfCheckSaveWorthyPost(
     save_type_label: input.saveType.label,
     save_type_instruction: input.saveType.instruction,
     char_limit: String(Math.floor(input.charLimit / 2)),
+    safety_check_section: buildSafetyCheckSection(),
     bookmark_review_section: buildBookmarkReviewSection(loadReaderPersonas(), true),
   });
 
   const result = await callClaudeJson(model, prompt, selfCheckSchema);
   const pass = isSaveWorthyPass(result.data, input.passThreshold);
-  return { raw: result.raw, data: { ...result.data, pass } };
+  return { raw: result.raw, data: applySafetyGate({ ...result.data, pass }) };
 }
 
 export function isSaveWorthyPass(data: Pick<SelfCheckResult, "score" | "bookmark_review">, passThreshold: number): boolean {

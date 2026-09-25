@@ -63,6 +63,8 @@
 入れてください。修正不要な場合は元の本文をそのまま(一字一句変えずに)入れてください。
 どちらも空にすることは絶対にしないでください。
 
+{{safety_check_section}}
+
 {{bookmark_review_section}}
 
 # 出力
@@ -76,6 +78,7 @@ JSONのみ。
   "improvements": [],
   "final_hook": "",
   "final_payoff": "",
+  "safety_violations": [],
   "bookmark_review": [
     { "persona": "", "would_bookmark": false, "reason": "" }
   ]

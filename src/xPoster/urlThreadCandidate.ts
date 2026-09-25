@@ -1,25 +1,27 @@
 import type { Article, Draft } from "@prisma/client";
 import { prisma } from "../db/client";
-import { getJstDateString } from "./time";
 import { PROMOTABLE_ARTICLE_STATUSES } from "./selectArticle";
 import { findOriginSession, isArticlePublished, findPublishedArticleUrl } from "./articlePublication";
 
-// 承認待ち・承認済みの記事URL付き投稿は処理中とみなし、日次上限のカウントにも含める
+// 承認待ち・承認済みの記事URL付き投稿は処理中とみなし、上限のカウントにも含める
 // (承認結果が出る前に重複して生成しないため)。
 const IN_FLIGHT_STATUSES = ["pending_approval", "approved"];
 const LIVE_STATUSES = ["posted", "posted_dryrun"];
 
-// 今日(JST)、既にurlPostsPerDay件の記事URL付き投稿を作っている(または作成中の)かどうか。
-export async function hasReachedDailyUrlPostLimit(urlPostsPerDay: number): Promise<boolean> {
-  if (urlPostsPerDay <= 0) return true;
+const URL_POST_LIMIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-  const todayJst = getJstDateString(new Date());
-  const posts = await prisma.xPost.findMany({
-    where: { articleUrl: { not: null }, status: { in: [...IN_FLIGHT_STATUSES, ...LIVE_STATUSES] } },
-    select: { createdAt: true },
+// 直近7日間に、既にurlPostsPerWeek件の記事URL付き投稿を作っている(または作成中の)かどうか。
+export async function hasReachedWeeklyUrlPostLimit(urlPostsPerWeek: number): Promise<boolean> {
+  if (urlPostsPerWeek <= 0) return true;
+
+  const count = await prisma.xPost.count({
+    where: {
+      articleUrl: { not: null },
+      status: { in: [...IN_FLIGHT_STATUSES, ...LIVE_STATUSES] },
+      createdAt: { gte: new Date(Date.now() - URL_POST_LIMIT_WINDOW_MS) },
+    },
   });
-  const countToday = posts.filter((post) => getJstDateString(post.createdAt) === todayJst).length;
-  return countToday >= urlPostsPerDay;
+  return count >= urlPostsPerWeek;
 }
 
 export interface UrlThreadCandidate {
@@ -28,7 +30,7 @@ export interface UrlThreadCandidate {
   articleUrl: string;
 }
 
-// 公開済み(issueクローズ済み)かつ最後のコメントに記事URLが貼られている記事の中から、
+// 公開済み(issueクローズ済み)かつコメントに記事の公開先URLが貼られている記事の中から、
 // まだURL付き投稿を作っていない(処理中でない、または前回の投稿からcooldownDays日以上
 // 経った)ものをランダムに1件選ぶ。記事ごとにGitHub APIを呼ぶため、記事数が多いと
 // 時間がかかる点に注意(現状の記事数であれば実用上問題にならない想定)。

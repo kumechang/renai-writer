@@ -2,6 +2,7 @@ import { z } from "zod";
 import { loadPromptTemplate, renderPrompt } from "./promptLoader";
 import { callClaudeJson } from "./jsonRetry";
 import { buildArticleExcerpt } from "./generatePost";
+import { applySafetyGate, buildSafetyCheckSection, safetyViolationsSchema } from "./safetyCheck";
 import { bookmarkReviewSchema, buildBookmarkReviewSection, loadReaderPersonas } from "./bookmarkReview";
 
 // X投稿セルフチェック.md の出力JSON形式。合否に関わらずfinal_postには
@@ -15,6 +16,7 @@ export const selfCheckSchema = z.object({
   problems: z.array(z.string()),
   improvements: z.array(z.string()),
   final_post: z.string().min(1, "final_post must not be empty"),
+  safety_violations: safetyViolationsSchema,
   bookmark_review: bookmarkReviewSchema,
 });
 
@@ -46,6 +48,7 @@ export async function selfCheckPost(
       ? ""
       : "- この記事はまだ他媒体で公開されていません。内容の具体的な詳細・結論・引用を" +
         "明かしてしまっていないか(匂わせ程度に留まっているか)を厳しく確認してください。",
+    safety_check_section: buildSafetyCheckSection(),
     bookmark_review_section: buildBookmarkReviewSection(loadReaderPersonas(), false),
   });
 
@@ -55,5 +58,5 @@ export async function selfCheckPost(
   // 実際の合否判定はconfig.selfCheckPassThresholdで上書きする
   // (amazon-sentaku-shiageのselfCheckStage.tsと同じ考え方)。
   const pass = result.data.score >= input.passThreshold;
-  return { raw: result.raw, data: { ...result.data, pass } };
+  return { raw: result.raw, data: applySafetyGate({ ...result.data, pass }) };
 }

@@ -38,9 +38,14 @@ export interface XPosterConfig {
   // 種別・記事をまたいだアカウント全体の直近の投稿の書き出しを、ネタ・書き出しの
   // 重複チェック用に何件までプロンプトに渡すか。
   recentOpeningsWindow: number;
-  // 記事URL付き投稿(2ツイート構成のスレッド)を1日に何件まで許可するか。
-  // 公開中の記事が複数あっても、この件数を超えて生成しない。
-  urlPostsPerDay: number;
+  // 記事URL付き投稿(2ツイート構成のスレッド)を、直近7日間で何件まで許可するか。
+  // 同じ記事のURLを短期間に何度も貼ると、スパム扱いや読者の飽きにつながるため絞っている。
+  urlPostsPerWeek: number;
+  // 同じ記事のURL付き投稿を、前回の投稿から何日空けるか。
+  urlThreadCooldownDays: number;
+  // 記事issueのコメントから拾う「記事の公開先URL」として許可する形(正規表現)。
+  // これに一致しないURL(Claude Codeのattributionリンクなど)は投稿に使わない。
+  publishedArticleUrlPattern: string;
   // 投稿生成時に「直近よく使われている言葉」ヒントとして渡す、トレンドワードの件数
   // (src/xPoster/trendWords.ts、npm run x-post:collect-trendsが収集したもの)。
   trendWordsLimit: number;

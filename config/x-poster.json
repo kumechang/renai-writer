@@ -15,7 +15,9 @@
   "standalonePostRatio": 0.5,
   "recentPostsForVarietyWindow": 10,
   "recentOpeningsWindow": 30,
-  "urlPostsPerDay": 1,
+  "urlPostsPerWeek": 2,
+  "urlThreadCooldownDays": 14,
+  "publishedArticleUrlPattern": "^https://note\\.com/yurumeru_romance/n/n[0-9a-z]+$",
   "trendWordsLimit": 8,
   "behindTheScenesPostRatio": 0.15,
   "saveWorthyPostRatio": 0.3

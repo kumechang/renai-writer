@@ -2,6 +2,7 @@ import { z } from "zod";
 import { loadPromptTemplate, renderPrompt } from "./promptLoader";
 import { callClaudeJson } from "./jsonRetry";
 import { buildArticleExcerpt } from "./generatePost";
+import { applySafetyGate, buildSafetyCheckSection, safetyViolationsSchema } from "./safetyCheck";
 import { bookmarkReviewSchema, buildBookmarkReviewSection, loadReaderPersonas } from "./bookmarkReview";
 
 // final_hook/final_payoffのmin(1)は、通常のセルフチェックで実際に発生した
@@ -13,6 +14,7 @@ export const urlThreadSelfCheckSchema = z.object({
   improvements: z.array(z.string()),
   final_hook: z.string().min(1, "final_hook must not be empty"),
   final_payoff: z.string().min(1, "final_payoff must not be empty"),
+  safety_violations: safetyViolationsSchema,
   bookmark_review: bookmarkReviewSchema,
 });
 
@@ -42,10 +44,11 @@ export async function selfCheckUrlThreadPost(
     article_excerpt: buildArticleExcerpt(input.articleContent),
     article_url: input.articleUrl,
     char_limit: String(input.charLimit),
+    safety_check_section: buildSafetyCheckSection(),
     bookmark_review_section: buildBookmarkReviewSection(loadReaderPersonas(), false),
   });
 
   const result = await callClaudeJson(model, prompt, urlThreadSelfCheckSchema);
   const pass = result.data.score >= input.passThreshold;
-  return { raw: result.raw, data: { ...result.data, pass } };
+  return { raw: result.raw, data: applySafetyGate({ ...result.data, pass }) };
 }
