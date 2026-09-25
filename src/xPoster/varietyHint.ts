@@ -29,3 +29,27 @@ export async function buildVarietyHint(scope: VarietyScope, window: number): Pro
     ...lines,
   ].join("\n");
 }
+
+const OPENING_LENGTH = 60;
+
+// 投稿種別・記事をまたいで、アカウント全体の直近の投稿の書き出しを渡す。種別ごとの
+// 重複チェックだけでは、「連絡先が消せない」のような同じネタや「〜ない?」のような同じ
+// 書き出しが種別をまたいで繰り返され、タイムラインで「また同じ話」と読み飛ばされていたため。
+export async function buildRecentOpeningsHint(window: number): Promise<string | null> {
+  const posts = await prisma.xPost.findMany({
+    where: { status: { in: SUCCESSFUL_STATUSES } },
+    orderBy: { createdAt: "desc" },
+    take: window,
+    select: { finalText: true },
+  });
+  if (posts.length === 0) return null;
+
+  const lines = posts.map((post) => {
+    const flat = post.finalText.replace(/\s+/g, " ").trim();
+    return `- ${flat.length > OPENING_LENGTH ? `${flat.slice(0, OPENING_LENGTH)}…` : flat}`;
+  });
+  return [
+    "アカウント全体の直近の投稿の書き出しです(新しい順)。同じネタ・同じ場面・似た書き出しを繰り返さないでください:",
+    ...lines,
+  ].join("\n");
+}

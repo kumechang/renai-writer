@@ -22,7 +22,7 @@ export function loadReaderPersonas(): string {
 }
 
 // セルフチェックのプロンプトに埋め込む判定指示。affectsScoreがfalseの場合は参考情報として
-// 記録するだけにし、既存の投稿種別(共感・続きが気になる導入を狙う設計)の採点基準は変えない。
+// 記録するだけにし、既存の投稿種別の採点基準は変えない。
 export function buildBookmarkReviewSection(personas: string, affectsScore: boolean): string {
   const scoringNote = affectsScore
     ? "この判定は採点に含めてください。どのペルソナも保存しない判定の場合は不合格とし、" +

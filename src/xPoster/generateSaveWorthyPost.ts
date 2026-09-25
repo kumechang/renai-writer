@@ -1,7 +1,7 @@
 import { loadPromptTemplate, loadConfigDoc, renderPrompt } from "./promptLoader";
 import { callClaude } from "./claudeClient";
 import { buildFeedbackHint } from "./feedbackHint";
-import { buildVarietyHint } from "./varietyHint";
+import { buildRecentOpeningsHint, buildVarietyHint } from "./varietyHint";
 import { loadReaderPersonas } from "./bookmarkReview";
 
 export const SAVE_WORTHY_POST_KIND = "save_worthy";
@@ -46,6 +46,7 @@ export interface GenerateSaveWorthyPostInput {
   charLimit: number;
   recentFeedbackWindow: number;
   recentPostsForVarietyWindow: number;
+  recentOpeningsWindow: number;
 }
 
 // 記事に紐づかない、保存(ブックマーク)されることを狙った1ツイートの投稿を生成する。
@@ -58,6 +59,7 @@ export async function generateSaveWorthyPost(model: string, input: GenerateSaveW
 
   const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
   const varietyHint = await buildVarietyHint({ postKind: SAVE_WORTHY_POST_KIND }, input.recentPostsForVarietyWindow);
+  const recentOpeningsHint = await buildRecentOpeningsHint(input.recentOpeningsWindow);
 
   const prompt = renderPrompt(template, {
     account_info: loadConfigDoc("x_account_info.md"),
@@ -66,6 +68,7 @@ export async function generateSaveWorthyPost(model: string, input: GenerateSaveW
     save_type_instruction: input.saveType.instruction,
     feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
     variety_hint: varietyHint ?? "(まだ過去の保存型投稿はありません)",
+    recent_openings_hint: recentOpeningsHint ?? "(まだ投稿はありません)",
     char_limit_note:
       `全角${targetChars}文字程度を目標にし、絶対に全角${zenkakuLimit}文字を超えないでください` +
       "(改行も1文字として数えます)。",

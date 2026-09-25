@@ -190,14 +190,18 @@ describe("generateSaveWorthyPost", () => {
       charLimit: 280,
       recentFeedbackWindow: 5,
       recentPostsForVarietyWindow: 5,
+      recentOpeningsWindow: 30,
     });
 
     expect(text).toBe("生成された本文");
     const prompt = vi.mocked(callClaude).mock.calls[0][1];
     expect(prompt).toContain(SAVE_WORTHY_TYPES[1].label);
     expect(prompt).toContain("由佳");
-    expect(prompt).toContain("過去の保存型");
-    expect(prompt).not.toContain("過去の単発");
+    const [beforeOpenings, openingsSection] = prompt.split("# 直近のアカウント全体の投稿の書き出し");
+    const varietySection = beforeOpenings.split("# 過去の保存型投稿")[1];
+    expect(varietySection).toContain("過去の保存型");
+    expect(varietySection).not.toContain("過去の単発");
+    expect(openingsSection).toContain("過去の単発");
   });
 });
 

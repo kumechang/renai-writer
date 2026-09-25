@@ -35,6 +35,9 @@ export interface XPosterConfig {
   // 同じ記事から作った過去の投稿・過去の単発投稿を、切り口の重複チェック用に
   // 何件までプロンプトに渡すか。
   recentPostsForVarietyWindow: number;
+  // 種別・記事をまたいだアカウント全体の直近の投稿の書き出しを、ネタ・書き出しの
+  // 重複チェック用に何件までプロンプトに渡すか。
+  recentOpeningsWindow: number;
   // 記事URL付き投稿(2ツイート構成のスレッド)を1日に何件まで許可するか。
   // 公開中の記事が複数あっても、この件数を超えて生成しない。
   urlPostsPerDay: number;

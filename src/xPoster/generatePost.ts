@@ -1,7 +1,7 @@
 import { loadPromptTemplate, loadConfigDoc, renderPrompt } from "./promptLoader";
 import { callClaude } from "./claudeClient";
 import { buildFeedbackHint } from "./feedbackHint";
-import { buildVarietyHint } from "./varietyHint";
+import { buildRecentOpeningsHint, buildVarietyHint } from "./varietyHint";
 import { buildTrendHint } from "./trendWords";
 
 // 記事本文が長いため、プロンプトに渡すのは冒頭の抜粋のみにする
@@ -33,6 +33,7 @@ export interface GeneratePostInput {
   charLimit: number;
   recentFeedbackWindow: number;
   recentPostsForVarietyWindow: number;
+  recentOpeningsWindow: number;
   trendWordsLimit: number;
 }
 
@@ -50,6 +51,7 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
   const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
   const varietyHint = await buildVarietyHint({ articleId: input.articleId }, input.recentPostsForVarietyWindow);
   const trendHint = await buildTrendHint(input.trendWordsLimit);
+  const recentOpeningsHint = await buildRecentOpeningsHint(input.recentOpeningsWindow);
 
   // 未公開のうちはURLを渡されていても使わない(公開先が無いため)。
   const effectiveUrl = input.published ? input.articleUrl : undefined;
@@ -71,15 +73,26 @@ export async function generatePost(model: string, input: GeneratePostInput): Pro
     article_url_section: effectiveUrl
       ? `## 記事URL\n\n${effectiveUrl}\n\nこのURLを投稿の最後に含めてください。`
       : "記事のURLはまだ決まっていません。URLは含めず、記事の内容だけで完結する投稿にしてください。",
-    article_url_section_note: effectiveUrl
-      ? "記事URL(そのまま貼り付け)"
-      : "続きが気になる余韻で締める(URLは含めない)",
+    article_url_section_note: buildArticleUrlSectionNote(effectiveUrl, input.published),
     char_limit_note: `投稿本文は全角${targetChars}文字程度を目標にし、絶対に全角${input.charLimit}文字を超えないでください。超えそうな場合は表現を削って短くしてください。`,
     feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
     variety_hint: varietyHint ?? "(この記事からの投稿はまだありません)",
     trend_hint: trendHint ?? "(トレンドワードは未収集です)",
+    recent_openings_hint: recentOpeningsHint ?? "(まだ投稿はありません)",
   });
 
   const text = await callClaude(model, prompt);
   return text.trim();
+}
+
+// 公開済みでURLが無い投稿で「記事を書いた」とだけ伝えると、読者がたどり着けない
+// 行き止まりになるため、記事の存在には触れさせない。未公開の記事は、運用上の要望どおり
+// 「今度こんな記事を書いた」という匂わせに留める。
+export function buildArticleUrlSectionNote(articleUrl: string | undefined, published: boolean): string {
+  if (articleUrl) return "記事URL(そのまま貼り付け)";
+  if (!published) return "続きが気になる余韻で締める(URLは含めない)";
+  return (
+    "言い切り、または答えやすい問いかけで締める(URLが無いため、「記事を書いた」「記事にまとめた」など" +
+    "記事の存在には触れず、投稿単体で完結させる)"
+  );
 }

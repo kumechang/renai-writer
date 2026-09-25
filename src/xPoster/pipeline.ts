@@ -139,6 +139,7 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
       charLimit: config.xCharLimit,
       recentFeedbackWindow: config.recentFeedbackWindow,
       recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+      recentOpeningsWindow: config.recentOpeningsWindow,
       trendWordsLimit: config.trendWordsLimit,
     });
 
@@ -214,6 +215,7 @@ async function generateStandaloneThreadPost(config: XPosterConfig, repo: Repo): 
       charLimit: config.xCharLimit,
       recentFeedbackWindow: config.recentFeedbackWindow,
       recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+      recentOpeningsWindow: config.recentOpeningsWindow,
       trendWordsLimit: config.trendWordsLimit,
     });
 
@@ -302,6 +304,7 @@ async function tryGenerateUrlThreadPost(
       charLimit: config.xCharLimit,
       recentFeedbackWindow: config.recentFeedbackWindow,
       recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+      recentOpeningsWindow: config.recentOpeningsWindow,
       trendWordsLimit: config.trendWordsLimit,
     });
 
@@ -410,6 +413,7 @@ async function tryGenerateBehindTheScenesPost(
       charLimit: config.xCharLimit,
       recentFeedbackWindow: config.recentFeedbackWindow,
       recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+      recentOpeningsWindow: config.recentOpeningsWindow,
     });
 
   const runSelfCheckFor = (generatedText: string) =>
@@ -491,6 +495,7 @@ async function generateSaveWorthyXPost(config: XPosterConfig, repo: Repo): Promi
       charLimit: config.xCharLimit,
       recentFeedbackWindow: config.recentFeedbackWindow,
       recentPostsForVarietyWindow: config.recentPostsForVarietyWindow,
+      recentOpeningsWindow: config.recentOpeningsWindow,
     });
 
   const runSelfCheckFor = (generatedText: string) =>

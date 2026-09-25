@@ -1,7 +1,7 @@
 import { loadPromptTemplate, loadConfigDoc, renderPrompt } from "./promptLoader";
 import { callClaude } from "./claudeClient";
 import { buildFeedbackHint } from "./feedbackHint";
-import { buildVarietyHint } from "./varietyHint";
+import { buildRecentOpeningsHint, buildVarietyHint } from "./varietyHint";
 import { buildArticleExcerpt } from "./generatePost";
 import type { BehindTheScenesTopic } from "./selectBehindTheScenesTarget";
 
@@ -80,6 +80,7 @@ export interface GenerateBehindTheScenesPostInput {
   charLimit: number;
   recentFeedbackWindow: number;
   recentPostsForVarietyWindow: number;
+  recentOpeningsWindow: number;
 }
 
 // パイプライン第1段階(制作裏話版): 公開済み記事の「なぜこのテーマ/タイトル/構成にしたか」を
@@ -95,6 +96,7 @@ export async function generateBehindTheScenesPost(
 
   const feedbackHint = await buildFeedbackHint(input.recentFeedbackWindow);
   const varietyHint = await buildVarietyHint({ articleId: input.articleId }, input.recentPostsForVarietyWindow);
+  const recentOpeningsHint = await buildRecentOpeningsHint(input.recentOpeningsWindow);
 
   const topicMaterial = buildTopicMaterial({
     topic: input.topic,
@@ -115,6 +117,7 @@ export async function generateBehindTheScenesPost(
     char_limit_note: `投稿本文は全角${targetChars}文字程度を目標にし、絶対に全角${input.charLimit}文字を超えないでください。超えそうな場合は表現を削って短くしてください。`,
     feedback_hint: feedbackHint ?? "(まだ指摘はありません)",
     variety_hint: varietyHint ?? "(この記事からの投稿はまだありません)",
+    recent_openings_hint: recentOpeningsHint ?? "(まだ投稿はありません)",
   });
 
   const text = await callClaude(model, prompt);
