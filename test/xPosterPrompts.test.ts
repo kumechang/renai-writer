@@ -106,6 +106,7 @@ describe("generation prompts", () => {
     for (const prompt of prompts) {
       expect(prompt).toContain("別種別で使った書き出し");
       expect(prompt).toContain("型の固定化");
+      expect(prompt).toContain("反応が大きかった型");
       expect(prompt).not.toContain("話が完結する手前で切って");
       expect(prompt).not.toContain("「文が完結していない」状態で");
     }
@@ -118,5 +119,20 @@ describe("x-poster config", () => {
     expect(config.targetPostsPerDay).toBeLessThanOrEqual(3);
     expect(config.minSpacingHours).toBeGreaterThanOrEqual(3);
     expect(config.recentOpeningsWindow).toBeGreaterThan(config.recentPostsForVarietyWindow);
+  });
+});
+
+describe("viral reply pattern", () => {
+  it("is available as a save-worthy type and as a standalone direction, with the no-copy guard in the account info", async () => {
+    const { SAVE_WORTHY_TYPES } = await import("../src/xPoster/generateSaveWorthyPost");
+    const type = SAVE_WORTHY_TYPES.find((t) => t.label === "基準の言語化型");
+    expect(type).toBeDefined();
+    expect(type!.instruction).toContain("悪く言わず");
+
+    const { readFileSync } = await import("node:fs");
+    const account = readFileSync("config/x_account_info.md", "utf-8");
+    expect(account).toContain("同じ話題(「好き好き言ってくれる」)も繰り返さない");
+    expect(account).toContain("単独の投稿で同じ数字が");
+    expect(readFileSync("prompt/X投稿生成_単発.md", "utf-8")).toContain("いい関係・いい相手の条件");
   });
 });
