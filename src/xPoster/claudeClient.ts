@@ -16,10 +16,13 @@ export async function callClaude(model: string, prompt: string): Promise<string>
   // thinkingを明示的に無効化しないと、拡張思考にmax_tokensの予算を使い切られて
   // 肝心の本文が一切出力されないまま打ち切られることがある
   // (投稿文の作成・チェックというタスクには深い推論は不要なため無効化して問題ない)。
+  // Claude Sonnet 5.5では thinking.type: "disabled" が廃止され400になるため、
+  // 同等の「最も軽いthinking設定」である between_tools を使う(SDKの型定義がまだ
+  // between_tools を含まないため、型チェックを一時的に回避している)。
   const response = await getClient().messages.create({
     model,
     max_tokens: 2048,
-    thinking: { type: "disabled" },
+    thinking: { type: "between_tools" } as unknown as Anthropic.ThinkingConfigParam,
     messages: [{ role: "user", content: prompt }],
   });
 
