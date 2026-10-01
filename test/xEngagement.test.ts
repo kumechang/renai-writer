@@ -380,3 +380,17 @@ describe("buildDiscoveryIssueBody", () => {
     expect(body).toContain("見つかりませんでした");
   });
 });
+
+describe("reply guide for Claude prompts", () => {
+  it("is self-contained and carries the safety rules, the viral pattern and the no-link rule", async () => {
+    const { readFileSync } = await import("node:fs");
+    const guide = readFileSync("prompt/X返信ガイド.md", "utf-8");
+    for (const section of ["作成モード", "レビューモード", "基準の言語化型", "チェック項目", "見送"]) {
+      expect(guide).toContain(section);
+    }
+    expect(guide).toContain("claude.ai/");
+    expect(guide).toContain("そのまま借りない");
+    expect(guide).toContain("DV・モラハラ・性暴力");
+    expect(guide).not.toMatch(/\{\{[^}]+\}\}/);
+  });
+});
