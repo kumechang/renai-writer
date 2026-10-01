@@ -78,8 +78,9 @@ describe("isSaveWorthyPass", () => {
 
 describe("pickSaveWorthyType", () => {
   it("maps the random value across all types, clamping at the upper edge", () => {
+    const half = Math.floor(0.5 * SAVE_WORTHY_TYPES.length);
     expect(pickSaveWorthyType(() => 0)).toBe(SAVE_WORTHY_TYPES[0]);
-    expect(pickSaveWorthyType(() => 0.5)).toBe(SAVE_WORTHY_TYPES[1]);
+    expect(pickSaveWorthyType(() => 0.5)).toBe(SAVE_WORTHY_TYPES[half]);
     expect(pickSaveWorthyType(() => 0.999)).toBe(SAVE_WORTHY_TYPES[SAVE_WORTHY_TYPES.length - 1]);
     expect(pickSaveWorthyType(() => 1)).toBe(SAVE_WORTHY_TYPES[SAVE_WORTHY_TYPES.length - 1]);
   });
