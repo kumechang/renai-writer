@@ -392,5 +392,8 @@ describe("reply guide for Claude prompts", () => {
     expect(guide).toContain("そのまま借りない");
     expect(guide).toContain("DV・モラハラ・性暴力");
     expect(guide).not.toMatch(/\{\{[^}]+\}\}/);
+    expect(guide).toContain("保存したくなる一行");
+    expect(guide).toContain("文型・書き出し・語尾");
+    expect(guide).toContain("丸く収めるだけで終わらない");
   });
 });
