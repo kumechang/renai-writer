@@ -133,6 +133,8 @@ describe("viral reply pattern", () => {
     const account = readFileSync("config/x_account_info.md", "utf-8");
     expect(account).toContain("同じ話題(「好き好き言ってくれる」)も繰り返さない");
     expect(account).toContain("単独の投稿で同じ数字が");
+    expect(account).toContain("全体の1割まで");
+    expect(account).not.toContain("3割");
     expect(readFileSync("prompt/X投稿生成_単発.md", "utf-8")).toContain("いい関係・いい相手の条件");
   });
 });
