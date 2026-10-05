@@ -138,3 +138,16 @@ describe("viral reply pattern", () => {
     expect(readFileSync("prompt/X投稿生成_単発.md", "utf-8")).toContain("いい関係・いい相手の条件");
   });
 });
+
+describe("no invented first-person experiences", () => {
+  it("keeps the account info and the reply guide free of invited anecdotes", async () => {
+    const { readFileSync } = await import("node:fs");
+    const account = readFileSync("config/x_account_info.md", "utf-8");
+    expect(account).toContain("### 書き手の体験談");
+    expect(account).not.toContain("「私もそうだった」");
+    const guide = readFileSync("prompt/X返信ガイド.md", "utf-8");
+    expect(guide).toContain("体験談を作らない");
+    expect(guide).not.toContain("私は、見たくなったらまず立って");
+    expect(guide).not.toContain("自分(ライター)も同じ場面にいた");
+  });
+});
