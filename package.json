@@ -24,7 +24,8 @@
     "x-post:collect-trends": "ts-node src/cli/collectTrendWords.ts",
     "x-engagement:collect": "ts-node src/cli/collectWatchedPosts.ts",
     "x-engagement:discover": "ts-node src/cli/discoverWatchAccounts.ts",
-    "x-engagement:review-comment": "ts-node src/cli/postXEngagementReviewComment.ts"
+    "x-engagement:review-comment": "ts-node src/cli/postXEngagementReviewComment.ts",
+    "ops:health": "ts-node src/cli/opsHealth.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
