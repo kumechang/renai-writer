@@ -14,7 +14,7 @@ export interface ApprovalEvent {
 
 interface IssueCommentEventPayload {
   action: string;
-  comment: { body: string; user: { login: string } };
+  comment: { body: string; user: { login: string }; author_association?: string };
   issue: { number: number; labels: { name: string }[] };
 }
 
@@ -44,11 +44,34 @@ export function parseApprovalEvent(eventPath: string): ApprovalEvent {
     return { decision: "ignore", issueNumber, commenter, commentBody };
   }
 
-  if (commentBody.includes("承認")) {
+  // 投稿を承認・却下できるのは、リポジトリに書き込み権限のある人だけ。無関係な人のコメントで
+  // 投稿されないようにする(ワークフロー側のif条件でも同様に絞っている)。
+  // ペイロードにauthor_associationが無い場合(ローカル実行など)は、そのまま通す。
+  const association = payload.comment.author_association;
+  if (association !== undefined && !ALLOWED_AUTHOR_ASSOCIATIONS.includes(association)) {
+    return { decision: "ignore", issueNumber, commenter, commentBody };
+  }
+
+  const keyword = parseDecisionKeyword(commentBody);
+  if (keyword === "承認") {
     return { decision: "approve", issueNumber, commenter, commentBody };
   }
-  if (commentBody.includes("却下")) {
+  if (keyword === "却下") {
     return { decision: "reject", issueNumber, commenter, commentBody };
   }
   return { decision: "feedback", issueNumber, commenter, commentBody };
+}
+
+export const ALLOWED_AUTHOR_ASSOCIATIONS = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+// コメントの**先頭**が「承認」「却下」(とその言い切りの形)のときだけ、承認・却下として扱う。
+// 以前は、本文のどこかに「承認」「却下」が含まれていれば反応していたため、承認issueを整理する
+// コメント(「承認待ちの整理として〜」)が承認と判定され、古い投稿が公開されてしまった。
+// 「承認待ち」「承認前に〜」のように、キーワードの後ろに別の言葉が続く場合は、フィードバック扱いにする。
+// 例: 「承認」「承認します」「承認OK」「却下 トーンが強すぎる」「却下、理由は〜」
+const DECISION_PATTERN = /^\s*(承認|却下)(?:します|する|です|で|お願いします|ok)?(?=$|[\s、。,.!!::\-—]|[(（])/i;
+
+export function parseDecisionKeyword(commentBody: string): "承認" | "却下" | null {
+  const match = DECISION_PATTERN.exec(commentBody);
+  return match ? (match[1] as "承認" | "却下") : null;
 }

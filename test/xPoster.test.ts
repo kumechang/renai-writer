@@ -129,6 +129,56 @@ describe("parseApprovalEvent", () => {
     expect(parseApprovalEvent(eventPath).decision).toBe("feedback");
   });
 
+  it.each([
+    "承認待ちの整理として、運用者の依頼で却下しました。",
+    "このまま承認していいか迷っています",
+    "承認前に、トーンだけ直したい",
+    "却下されました",
+    "前の投稿は承認します",
+  ])("does not treat a comment that merely contains the keyword as a decision: %s", (body) => {
+    const eventPath = writeEventPayload({
+      action: "created",
+      comment: { body, user: { login: "kumechang" } },
+      issue: { number: 42, labels: [{ name: "pending-x-post-approval" }] },
+    });
+    expect(parseApprovalEvent(eventPath).decision).toBe("feedback");
+  });
+
+  it.each([
+    ["承認", "approve"],
+    ["承認します", "approve"],
+    ["  承認OK", "approve"],
+    ["承認、投稿して", "approve"],
+    ["却下", "reject"],
+    ["却下 トーンが強すぎる", "reject"],
+    ["却下、理由は重複", "reject"],
+  ])("accepts a comment that starts with the keyword: %s", (body, decision) => {
+    const eventPath = writeEventPayload({
+      action: "created",
+      comment: { body, user: { login: "kumechang" } },
+      issue: { number: 42, labels: [{ name: "pending-x-post-approval" }] },
+    });
+    expect(parseApprovalEvent(eventPath).decision).toBe(decision);
+  });
+
+  it("ignores comments from people without write access, even if they say 承認", () => {
+    const eventPath = writeEventPayload({
+      action: "created",
+      comment: { body: "承認", user: { login: "stranger" }, author_association: "NONE" },
+      issue: { number: 42, labels: [{ name: "pending-x-post-approval" }] },
+    });
+    expect(parseApprovalEvent(eventPath).decision).toBe("ignore");
+  });
+
+  it("accepts the repository owner's approval", () => {
+    const eventPath = writeEventPayload({
+      action: "created",
+      comment: { body: "承認", user: { login: "kumechang" }, author_association: "OWNER" },
+      issue: { number: 42, labels: [{ name: "pending-x-post-approval" }] },
+    });
+    expect(parseApprovalEvent(eventPath).decision).toBe("approve");
+  });
+
   it("ignores the bot's own comments to avoid self-triggering loops", () => {
     const eventPath = writeEventPayload({
       action: "created",
