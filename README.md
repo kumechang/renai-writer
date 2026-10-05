@@ -209,7 +209,7 @@ ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚�
 `config/x-poster.json` の既定値は `approvalMode: "auto"`（セルフチェック合格時は承認を
 待たずその場で投稿。不合格の場合は `"auto"` でも必ず人の承認待ちに倒す安全策あり）。
 
-1日あたりの目標投稿数（既定3件、`targetPostsPerDay`。以前は8件だったが、フォロワーが少ない段階で反応の薄い投稿を連発しても1件あたりの反応が薄まるだけだったため絞った。投稿間隔は`minSpacingHours`で3時間以上空ける）を目指し、`.github/workflows/x-post-generate.yml`
+1日あたりの目標投稿数（既定1件、`targetPostsPerDay`。以前は8件、その後3件だったが、直近4週間で自分の投稿は1件あたり平均約25〜40表示、フォローはほぼ0件で、本数を減らしても成果は変わらなかった。自分の投稿はプロフィールを見に来た人に見せる「ショーウィンドウ」と位置づけ、本数より質を優先している。投稿間隔は`minSpacingHours`で3時間以上空ける）を目指し、`.github/workflows/x-post-generate.yml`
 が投稿可能時間帯（既定JST 7〜24時、`postingWindow`）の間、毎時起動する。実際に生成するかは
 `src/xPoster/shouldGenerateNow.ts`（amazon-sentaku-shiageと同じロジック）が、残り目標数・
 直近投稿からの間隔・時間帯の重みをもとに判断するため、毎時起動してもClaude API呼び出し
@@ -271,7 +271,7 @@ ANTHROPIC_API_KEY=sk-ant-... npm run pipeline -- --theme "20代女性向け婚�
 ため、次の2つの仕組みを入れている。
 
 - **保存型投稿**(`postKind=save_worthy`): 記事URL付きスレッドに当たらなかった場合、
-  `saveWorthyPostRatio`(既定0.3)の確率で、記事に紐づかない1ツイートの「保存型」投稿を作る
+  `saveWorthyPostRatio`(既定0.5。種別別の平均表示数が最も高く、ブックマークを狙える型のため引き上げた)の確率で、記事に紐づかない1ツイートの「保存型」投稿を作る
   (`generateSaveWorthyPost.ts` / `X投稿生成_保存型.md`)。置き換え行動型・チェックリスト型・
   お守りの言葉型のいずれかをランダムに選び、途中で切らず投稿単体で持ち帰れる中身を書かせる。
 - **保存判定**: すべての投稿種別のセルフチェックで、`config/x_reader_personas.md`の想定読者
