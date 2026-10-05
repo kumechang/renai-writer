@@ -33,7 +33,7 @@ describe("applySafetyGate", () => {
 describe("buildSafetyCheckSection", () => {
   it("covers the topics that must never be auto-posted", () => {
     const section = buildSafetyCheckSection();
-    for (const keyword of ["希死念慮", "つきまとい", "まだ終わっていない", "3ヶ月", "研究もある", "safety_violations"]) {
+    for (const keyword of ["希死念慮", "つきまとい", "まだ終わっていない", "3ヶ月", "研究もある", "体験談", "safety_violations"]) {
       expect(section).toContain(keyword);
     }
   });
