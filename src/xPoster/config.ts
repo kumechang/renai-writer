@@ -32,6 +32,10 @@ export interface XPosterConfig {
   // 高めに設定している(既定0.5)。宣伝可能な記事が1件もない場合は、この確率に関わらず
   // 単発投稿にフォールバックする。
   standalonePostRatio: number;
+  // trueのとき、自動選択でも、記事URLの無い記事紹介(promo)投稿を作る(standalonePostRatioの残りの確率で)。
+  // falseなら、自動選択では作らない(articleIdを指定した手動実行だけが記事紹介を作る)。
+  // 記事URLの無い記事紹介は、ほとんどがセルフチェックに不合格になるため、既定はfalse。
+  autoArticlePromoEnabled: boolean;
   // 同じ記事から作った過去の投稿・過去の単発投稿を、切り口の重複チェック用に
   // 何件までプロンプトに渡すか。
   recentPostsForVarietyWindow: number;
