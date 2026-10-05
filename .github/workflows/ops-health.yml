@@ -1,0 +1,45 @@
+name: Ops - Health Check
+
+# 自動化した処理が、誰にも気づかれないまま何も出力しなくなるのを防ぐ週次のチェック。
+# 各処理(投稿の生成・公開、指標の収集など)の直近7日間の出力件数と、GitHub Actionsの失敗を
+# 集計する。基準を下回る処理や失敗があれば、issue(ラベル ops-health)を作る。
+# 意図して止めている処理は config/ops-health.json の paused で「停止中」にしておく。
+# (きっかけ: 返信候補の収集が、数週間、候補ゼロのまま動き続けていたことに気づけなかった)
+
+on:
+  schedule:
+    # 毎週月曜 JST 09:11 (UTC 00:11)
+    - cron: "11 0 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+env:
+  DATABASE_URL: file:./bot.db
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Check outputs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: npm run ops:health

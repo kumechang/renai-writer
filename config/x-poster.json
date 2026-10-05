@@ -4,7 +4,7 @@
   "xCharLimit": 280,
   "selfCheckPassThreshold": 75,
   "maxGenerateRetries": 2,
-  "targetPostsPerDay": 3,
+  "targetPostsPerDay": 1,
   "postingWindow": {
     "startHour": 7,
     "endHour": 24
@@ -20,5 +20,5 @@
   "publishedArticleUrlPattern": "^https://note\\.com/yurumeru_romance/n/n[0-9a-z]+$",
   "trendWordsLimit": 8,
   "behindTheScenesPostRatio": 0.15,
-  "saveWorthyPostRatio": 0.3
+  "saveWorthyPostRatio": 0.5
 }
