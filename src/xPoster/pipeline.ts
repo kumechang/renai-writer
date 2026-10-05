@@ -21,6 +21,7 @@ import { selectBehindTheScenesTarget } from "./selectBehindTheScenesTarget";
 import { generateSaveWorthyPost, pickSaveWorthyType, SAVE_WORTHY_POST_KIND } from "./generateSaveWorthyPost";
 import { selfCheckSaveWorthyPost } from "./selfCheckSaveWorthyPost";
 import type { BookmarkReview } from "./bookmarkReview";
+import { wantsArticlePromo } from "./articlePromoPolicy";
 
 // 生成+セルフチェックのやり直し(config.maxGenerateRetries)でも文字数超過が
 // 解消しない場合の最終手段として、専用の短縮パスを最大この回数まで試す
@@ -641,8 +642,9 @@ async function persistAndDispatch(input: PersistAndDispatchInput): Promise<Gener
 }
 
 // 今回の投稿対象を決める。--issueで明示指定された場合はそれを必ず使う(見つからなければ
-// エラー)。自動選択の場合はstandalonePostRatioの確率で単発投稿にし、それ以外は記事を
-// 選ぶ。ただし宣伝可能な記事が1件も無い場合は、確率に関わらず単発投稿にフォールバックする
+// エラー)。自動選択の場合は、autoArticlePromoEnabledがfalse(既定)なら常に単発投稿にする。
+// trueなら、standalonePostRatioの確率で単発投稿にし、それ以外は記事を選ぶ。ただし宣伝可能な記事が
+// 1件も無い場合は、確率に関わらず単発投稿にフォールバックする
 // (「記事の在庫が無くても恋愛系の投稿を続けてほしい」という運用要望に対応)。
 async function resolveTarget(options: GenerateXPostOptions, config: XPosterConfig): Promise<Target> {
   if (options.articleId) {
@@ -651,8 +653,7 @@ async function resolveTarget(options: GenerateXPostOptions, config: XPosterConfi
     return { kind: "article", article, draft };
   }
 
-  const wantsStandalone = Math.random() < config.standalonePostRatio;
-  if (!wantsStandalone) {
+  if (wantsArticlePromo(config)) {
     try {
       const article = await selectArticleForPost(config.repromotionCooldownDays);
       const draft = await requireDraft(article.id);

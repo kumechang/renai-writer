@@ -18,6 +18,8 @@ import { hasReachedWeeklyUrlPostLimit, findUrlThreadCandidate } from "../src/xPo
 import { selectBehindTheScenesTarget } from "../src/xPoster/selectBehindTheScenesTarget";
 import { buildTopicMaterial } from "../src/xPoster/generateBehindTheScenesPost";
 import * as articlePublication from "../src/xPoster/articlePublication";
+import { wantsArticlePromo } from "../src/xPoster/articlePromoPolicy";
+import { loadXPosterConfig } from "../src/xPoster/config";
 import {
   extractHashtags,
   aggregateTrendWords,
@@ -937,5 +939,25 @@ describe("buildTrendHint", () => {
     const hint = await buildTrendHint(1);
     expect(hint).toContain("#a");
     expect(hint).not.toContain("#b");
+  });
+});
+
+describe("wantsArticlePromo", () => {
+  const off = { autoArticlePromoEnabled: false, standalonePostRatio: 0.5 };
+  const on = { autoArticlePromoEnabled: true, standalonePostRatio: 0.5 };
+
+  it("never promotes an article automatically when the switch is off", () => {
+    expect(wantsArticlePromo(off, () => 0.99)).toBe(false);
+    expect(wantsArticlePromo(off, () => 0)).toBe(false);
+  });
+
+  it("promotes with the remaining probability when the switch is on", () => {
+    expect(wantsArticlePromo(on, () => 0.2)).toBe(false);
+    expect(wantsArticlePromo(on, () => 0.5)).toBe(true);
+    expect(wantsArticlePromo(on, () => 0.9)).toBe(true);
+  });
+
+  it("ships with automatic article promotion turned off", () => {
+    expect(loadXPosterConfig().autoArticlePromoEnabled).toBe(false);
   });
 });

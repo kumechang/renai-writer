@@ -13,6 +13,7 @@
   "repromotionCooldownDays": 3,
   "recentFeedbackWindow": 10,
   "standalonePostRatio": 0.5,
+  "autoArticlePromoEnabled": false,
   "recentPostsForVarietyWindow": 10,
   "recentOpeningsWindow": 30,
   "urlPostsPerWeek": 2,
