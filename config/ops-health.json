@@ -4,6 +4,7 @@
     { "id": "posts_generated", "label": "X投稿の生成", "minPerWindow": 3 },
     { "id": "posts_published", "label": "X投稿の公開(approvalMode: auto)", "minPerWindow": 2 },
     { "id": "posts_pending_approval", "label": "承認待ちのまま残っている投稿(全期間)", "minPerWindow": 0, "maxPerWindow": 3 },
+    { "id": "account_snapshots_recorded", "label": "フォロワー数の日次記録", "minPerWindow": 4 },
     { "id": "metrics_collected", "label": "投稿指標の収集", "minPerWindow": 1 },
     { "id": "posting_time_weights_updated", "label": "投稿時間帯の分析(週1。データ不足の週は更新されない)", "minPerWindow": 0 },
     { "id": "trend_words_captured", "label": "トレンドワードの収集", "minPerWindow": 0, "paused": true, "note": "APIコストのため停止中" },

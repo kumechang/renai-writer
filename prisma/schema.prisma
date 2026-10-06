@@ -262,6 +262,22 @@ model XPostMetric {
   @@index([xPostId])
 }
 
+// アカウントのフォロワー数などの日次スナップショット。投稿別の「新しいフォロー」は実際より大きく
+// 少なく出るため、フォロワー数そのものを毎日記録して、増減の「正」にする
+// (毎日の指標収集で、X APIの GET /2/users/me から取得する。npm run x-account:snapshot で、
+// 過去分を手で入れることもできる)。
+model AccountSnapshot {
+  id         String   @id @default(cuid())
+  // JSTのカレンダー日("YYYY-MM-DD")。1日1件で、同じ日に取り直したら上書きする。
+  capturedOn String   @unique
+  capturedAt DateTime @default(now())
+  followers  Int
+  following  Int?
+  tweetCount Int?
+  // api: X APIから自動取得 / manual: 運用者が手で入れた値
+  source     String   @default("api")
+}
+
 // 時間帯(JST 0-23時)ごとの投稿重み。analyzePostingTimesが定期的に更新する。
 // データ不足で未分析の時間帯はデフォルト1.0(均等)のまま残る
 // (amazon-sentaku-shiageのposting_time_weightsを流用)。

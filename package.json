@@ -26,7 +26,8 @@
     "x-engagement:discover": "ts-node src/cli/discoverWatchAccounts.ts",
     "x-engagement:review-comment": "ts-node src/cli/postXEngagementReviewComment.ts",
     "ops:health": "ts-node src/cli/opsHealth.ts",
-    "x-analytics:report": "ts-node src/cli/analyzeXAnalyticsCsv.ts"
+    "x-analytics:report": "ts-node src/cli/analyzeXAnalyticsCsv.ts",
+    "x-account:snapshot": "ts-node src/cli/recordAccountSnapshot.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
