@@ -36,6 +36,14 @@ on:
         description: "記事(Article)が紐づいたsub-issue (owner/repo#番号)。省略するとまだXで宣伝していない完成記事から自動で選ぶ"
         required: false
         type: string
+      kind:
+        description: "save_worthyを選ぶと、ペース判定を経ずに保存型の投稿を今すぐ1本作る(当たった直後に直近の投稿を整えたいとき用)。issue・urlとは併用しない"
+        required: false
+        type: choice
+        options:
+          - ""
+          - save_worthy
+        default: ""
       url:
         description: "記事の公開URL(任意。issueを指定した場合のみ有効。省略するとURLを含まない投稿文を生成する)"
         required: false
@@ -83,6 +91,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.scheduled }}" = "true" ]; then
             npm run x-post:generate -- --scheduled
+          elif [ "${{ inputs.kind }}" = "save_worthy" ]; then
+            npm run x-post:generate -- --kind save_worthy
           elif [ -n "${{ inputs.issue }}" ] && [ -n "${{ inputs.url }}" ]; then
             npm run x-post:generate -- --issue "${{ inputs.issue }}" --url "${{ inputs.url }}"
           elif [ -n "${{ inputs.issue }}" ]; then

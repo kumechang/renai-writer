@@ -5,7 +5,7 @@ import { buildArticleUrlSectionNote, generatePost } from "../src/xPoster/generat
 import { generateStandalonePost } from "../src/xPoster/generateStandalonePost";
 import { generateUrlThreadPost } from "../src/xPoster/generateUrlThreadPost";
 import { generateBehindTheScenesPost } from "../src/xPoster/generateBehindTheScenesPost";
-import { buildRecentOpeningsHint } from "../src/xPoster/varietyHint";
+import { buildRecentOpeningsHint, extractClosing } from "../src/xPoster/varietyHint";
 import { loadXPosterConfig } from "../src/xPoster/config";
 
 vi.mock("../src/xPoster/claudeClient", () => ({ callClaude: vi.fn() }));
@@ -51,6 +51,21 @@ describe("buildRecentOpeningsHint", () => {
     expect(hint).not.toContain("承認待ちの投稿");
   });
 
+  it("also lists the closing sentence of each recent post so closings are not repeated either", async () => {
+    await prisma.xPost.create({
+      data: {
+        generatedText: "x",
+        finalText: "最初の文です。\n\n中身の文です。それでも、自分を責めなくていい。",
+        status: "posted",
+        postKind: "standalone",
+        createdAt: new Date("2026-09-03"),
+      },
+    });
+    const hint = await buildRecentOpeningsHint(30);
+    expect(hint).toContain("締めの一文");
+    expect(hint).toContain("- それでも、自分を責めなくていい");
+  });
+
   it("respects the window size", async () => {
     for (let i = 0; i < 3; i++) {
       await prisma.xPost.create({
@@ -61,6 +76,14 @@ describe("buildRecentOpeningsHint", () => {
     expect(hint).toContain("投稿2");
     expect(hint).toContain("投稿1");
     expect(hint).not.toContain("投稿0");
+  });
+});
+
+describe("extractClosing", () => {
+  it("returns the last sentence and keeps the tail of a long one", () => {
+    expect(extractClosing("前の文。最後の文だよ。")).toBe("最後の文だよ");
+    const long = `${"あ".repeat(30)}${"い".repeat(30)}`;
+    expect(extractClosing(long)).toBe(`…${"あ".repeat(10)}${"い".repeat(30)}`);
   });
 });
 

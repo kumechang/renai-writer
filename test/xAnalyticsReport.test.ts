@@ -77,6 +77,47 @@ describe("parseAnalyticsCsv / buildAnalyticsReport", () => {
     expect(report).toContain("投稿に紐づく数字");
   });
 
+  it("flags small or lopsided theme samples and excludes the top reply from a second total", () => {
+    const report = buildAnalyticsReport(rows, themes);
+    expect(report).toContain("サンプル不足");
+    expect(report).toContain("1件に集中");
+    expect(report).toContain("上位1件を除く合計");
+  });
+
+  it("reads the parent account of each reply and groups repeat parents", () => {
+    expect(rows[0].parent).toBe("@a");
+    expect(rows[3].parent).toBe("");
+    const repeatCsv = [
+      HEADER,
+      line("1", "Mon, Oct 5, 2026", "@x 一つ目の返信です。", 1500, 10, 2, 0, 5),
+      line("2", "Tue, Oct 6, 2026", "@x 二つ目の返信です。", 500, 4, 0, 0, 1),
+      line("3", "Wed, Oct 7, 2026", "@y 別の宛先への返信です。", 40, 0, 0, 0, 0),
+    ].join("\n");
+    const report = buildAnalyticsReport(parseAnalyticsCsv(repeatCsv, themes), themes);
+    expect(report).toContain("宛先は2アカウント。2回以上返信したのは1アカウント(返信2件)");
+    expect(report).toContain("| @x | 2 | 1000 | 1,500 | 2,000 | 6 |");
+  });
+
+  it("proposes the best-reacting replies as candidates to turn into own posts", () => {
+    const promoCsv = [
+      HEADER,
+      line("1", "Mon, Oct 5, 2026", "@x 「保存したくなる」基準の話だよ。", 600, 10, 4, 0, 1),
+      line("2", "Tue, Oct 6, 2026", "@y 反応の薄い返信です。", 5000, 2, 0, 0, 1),
+      line("3", "Wed, Oct 7, 2026", "@z 表示が少なすぎる返信です。", 100, 9, 9, 0, 1),
+    ].join("\n");
+    const report = buildAnalyticsReport(parseAnalyticsCsv(promoCsv, themes), themes);
+    const section = report.split("## 自分の投稿に昇格させる候補")[1].split("## 表示数の多い返信")[0];
+    expect(section).toContain("| @x | 600 |");
+    expect(section).not.toContain("@y");
+    expect(section).not.toContain("@z");
+  });
+
+  it("counts reposts in the overall table", () => {
+    const withRepost = HEADER + "\n" + `9,"Mon, Oct 5, 2026","@a 返信",https://x.com/a/status/9,100,1,1,0,0,0,0,7,0,0,0,0,0`;
+    const report = buildAnalyticsReport(parseAnalyticsCsv(withRepost, themes), themes);
+    expect(report).toContain("| 返信(@で始まる) | 1 | 100 | 100 | 100 | 1 | 0 | 7 |");
+  });
+
   it("explains a missing column instead of failing silently", () => {
     expect(() => parseAnalyticsCsv("a,b\n1,2", themes)).toThrow("列がありません");
   });

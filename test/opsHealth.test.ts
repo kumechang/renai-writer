@@ -3,6 +3,7 @@ import { prisma } from "../src/db/client";
 import {
   buildHealthReport,
   collectOutputCounts,
+  collectShowcasePosts,
   countAlerts,
   evaluateChecks,
   fetchFailedRunCounts,
@@ -71,6 +72,39 @@ describe("buildHealthReport", () => {
   });
 });
 
+describe("showcase section", () => {
+  const now = new Date("2026-10-12T00:00:00Z");
+  const results = evaluateChecks(specs, { posts_generated: 9, metrics_collected: 1 });
+
+  it("lists the latest published posts with their kinds and the 5-second-test reminder", () => {
+    const report = buildHealthReport({
+      now,
+      windowDays: 7,
+      results,
+      failedRuns: [],
+      showcase: [
+        { postKind: "save_worthy", createdAt: new Date("2026-10-11"), text: "保存型の一文目です。\n続きです" },
+        { postKind: "standalone", createdAt: new Date("2026-10-10"), text: "単発の投稿です" },
+        { postKind: "save_worthy", createdAt: new Date("2026-10-09"), text: "もう一つの保存型" },
+      ],
+    });
+    expect(report).toContain("## 直近の公開投稿");
+    expect(report).toContain("種別: 保存型 2、単発 1(直近3件)");
+    expect(report).toContain("| 2026-10-11 | 保存型 | 保存型の一文目です。 続きです |");
+    expect(report).toContain("5秒テスト");
+  });
+
+  it("says so when nothing has been published", () => {
+    expect(buildHealthReport({ now, windowDays: 7, results, failedRuns: [], showcase: [] })).toContain(
+      "公開された投稿がありません。"
+    );
+  });
+
+  it("omits the section when no showcase data is given", () => {
+    expect(buildHealthReport({ now, windowDays: 7, results, failedRuns: [] })).not.toContain("直近の公開投稿");
+  });
+});
+
 describe("collectOutputCounts", () => {
   beforeEach(async () => {
     await prisma.xPostMetric.deleteMany();
@@ -99,6 +133,25 @@ describe("collectOutputCounts", () => {
     expect(counts.posts_pending_approval).toBe(2);
     expect(counts.posts_published).toBe(1);
     expect(counts.metrics_collected).toBe(1);
+  });
+});
+
+describe("collectShowcasePosts", () => {
+  afterAll(async () => {
+    await prisma.xPost.deleteMany();
+  });
+
+  it("returns only published posts, newest first, up to the limit", async () => {
+    await prisma.xPostMetric.deleteMany();
+    await prisma.xPost.deleteMany();
+    for (let i = 0; i < 4; i++) {
+      await prisma.xPost.create({
+        data: { generatedText: `p${i}`, finalText: `p${i}`, status: "posted", postKind: "standalone", createdAt: new Date(2026, 9, i + 1) },
+      });
+    }
+    await prisma.xPost.create({ data: { generatedText: "x", finalText: "未承認", status: "pending_approval", createdAt: new Date(2026, 9, 20) } });
+    const posts = await collectShowcasePosts(3);
+    expect(posts.map((p) => p.text)).toEqual(["p3", "p2", "p1"]);
   });
 });
 

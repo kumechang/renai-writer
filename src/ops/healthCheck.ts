@@ -119,11 +119,67 @@ const STATUS_LABEL: Record<HealthStatus, string> = {
   info: "参考",
 };
 
+export interface ShowcasePost {
+  postKind: string;
+  createdAt: Date;
+  text: string;
+}
+
+const KIND_LABEL: Record<string, string> = {
+  promo: "記事紹介",
+  standalone: "単発",
+  url_thread: "記事URL付きスレッド",
+  behind_the_scenes: "制作裏話",
+  save_worthy: "保存型",
+};
+
+// プロフィールを見に来た人が、フォローを決めるときに見る「直近の公開投稿」。
+export async function collectShowcasePosts(limit = 10): Promise<ShowcasePost[]> {
+  const posts = await prisma.xPost.findMany({
+    where: { status: "posted" },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: { postKind: true, createdAt: true, finalText: true },
+  });
+  return posts.map((p) => ({ postKind: p.postKind, createdAt: p.createdAt, text: p.finalText }));
+}
+
+export function buildShowcaseSection(posts: ShowcasePost[]): string[] {
+  const lines: string[] = [];
+  lines.push("## 直近の公開投稿(プロフィールを見に来た人が見るもの)");
+  lines.push("");
+  if (posts.length === 0) {
+    lines.push("公開された投稿がありません。");
+    return lines;
+  }
+  const counts = new Map<string, number>();
+  for (const p of posts) counts.set(p.postKind, (counts.get(p.postKind) ?? 0) + 1);
+  lines.push(
+    `種別: ${[...counts.entries()].map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`).join("、")}(直近${posts.length}件)`
+  );
+  lines.push("");
+  lines.push("| 日付 | 種別 | 書き出し |");
+  lines.push("| --- | --- | --- |");
+  for (const p of posts) {
+    const flat = p.text.replace(/\s+/g, " ").trim();
+    lines.push(
+      `| ${p.createdAt.toISOString().slice(0, 10)} | ${KIND_LABEL[p.postKind] ?? p.postKind} | ${(flat.length > 50 ? `${flat.slice(0, 50)}…` : flat).replace(/\|/g, "\\|")} |`
+    );
+  }
+  lines.push("");
+  lines.push(
+    "確認: プロフィール文・固定投稿・この直近の投稿が、同じ約束を語っているか。Claudeにプロフィールとこの一覧を渡して、" +
+      "「誰向けで、フォローすると何が得られるか」を5秒で答えられるか(5秒テスト)を試す。約束とずれた話題・雑談・宣伝は置かない。"
+  );
+  return lines;
+}
+
 export function buildHealthReport(input: {
   now: Date;
   windowDays: number;
   results: HealthCheckResult[];
   failedRuns: FailedRunCount[] | null;
+  showcase?: ShowcasePost[];
 }): string {
   const lines: string[] = [];
   const alerts = countAlerts(input.results, input.failedRuns);
@@ -153,6 +209,10 @@ export function buildHealthReport(input: {
     for (const f of input.failedRuns) lines.push(`- ${f.workflow}: ${f.failures}件`);
   }
   lines.push("");
+  if (input.showcase) {
+    lines.push(...buildShowcaseSection(input.showcase));
+    lines.push("");
+  }
   lines.push("## 見方");
   lines.push("");
   lines.push("- 件数が基準を下回る処理は、動いていても出力が出ていない可能性があります。ログと設定を確認してください。");

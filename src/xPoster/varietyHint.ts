@@ -48,8 +48,24 @@ export async function buildRecentOpeningsHint(window: number): Promise<string | 
     const flat = post.finalText.replace(/\s+/g, " ").trim();
     return `- ${flat.length > OPENING_LENGTH ? `${flat.slice(0, OPENING_LENGTH)}…` : flat}`;
   });
+  const closings = posts.map((post) => `- ${extractClosing(post.finalText)}`);
   return [
     "アカウント全体の直近の投稿の書き出しです(新しい順)。同じネタ・同じ場面・似た書き出しを繰り返さないでください:",
     ...lines,
+    "",
+    "同じく、直近の投稿の締めの一文です(新しい順)。似た締め方・同じ語尾・同じ言い回しを繰り返さないでください:",
+    ...closings,
   ].join("\n");
+}
+
+const CLOSING_LENGTH = 40;
+
+// 投稿の最後の一文(句点・改行区切り)を取り出す。長い場合は後ろ側を残す(締めの言い回しが残るように)。
+export function extractClosing(text: string): string {
+  const sentences = text
+    .split(/[。！？!?\n]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const last = (sentences[sentences.length - 1] ?? text).replace(/\s+/g, " ");
+  return last.length > CLOSING_LENGTH ? `…${last.slice(-CLOSING_LENGTH)}` : last;
 }

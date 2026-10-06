@@ -37,6 +37,9 @@ export interface GenerateXPostOptions {
   // (「毎回投稿を考えるときに完成記事の中からネタを拾ってほしい」という運用に対応するため)。
   articleId?: string;
   articleUrl?: string;
+  // "save_worthy"を指定すると、確率やペース判定を経ずに、保存型の投稿をすぐ1本作る
+  // (当たった直後に、来た人が直近を見て納得できるよう、保存型を今すぐ出したいときに使う)。
+  kind?: "save_worthy";
 }
 
 export interface GenerateXPostResult {
@@ -103,6 +106,10 @@ export async function generateXPost(options: GenerateXPostOptions = {}): Promise
     throw new Error(
       "GITHUB_REPOSITORY(owner/repo形式)が設定されていません。承認issueの作成先が分からないため中断します。"
     );
+  }
+
+  if (options.kind === "save_worthy" && !options.articleId) {
+    return generateSaveWorthyXPost(config, repo);
   }
 
   if (!options.articleId) {

@@ -11,6 +11,7 @@ import { parseGithubRepository } from "../xPoster/env";
 import {
   buildHealthReport,
   collectOutputCounts,
+  collectShowcasePosts,
   countAlerts,
   evaluateChecks,
   fetchFailedRunCounts,
@@ -32,7 +33,8 @@ async function main() {
   const repo = parseGithubRepository();
   const failedRuns = repo ? await fetchFailedRunCounts(repo.owner, repo.repo, since, process.env.GITHUB_TOKEN) : null;
 
-  const report = buildHealthReport({ now, windowDays: config.windowDays, results, failedRuns });
+  const showcase = await collectShowcasePosts(10);
+  const report = buildHealthReport({ now, windowDays: config.windowDays, results, failedRuns, showcase });
   console.log(report);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
 
