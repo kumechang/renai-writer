@@ -46,6 +46,10 @@ const USAGE =
   "      すべきかをconfig/x-poster.jsonの設定に基づいて判定し、条件を満たさなければ\n" +
   "      何もせず終了する(--issueとは併用しない)。\n" +
   "\n" +
+  "  npm run x-post:generate -- --kind save_worthy\n" +
+  "    → 保存型の投稿を、ペース判定を経ずに今すぐ1本作る(当たった直後に、来た人が直近を見て\n" +
+  "      納得できるようにしたいときなど。--issue / --scheduled とは併用しない)。\n" +
+  "\n" +
   "--url は --issue を指定した場合のみ有効(自動選択時はどの記事が選ばれるか事前に\n" +
   "分からないため、URLは指定できない)。省略した場合、URLを含まない投稿文を生成する。\n" +
   "\n" +
@@ -60,6 +64,16 @@ async function main() {
   const issueArg = getArg(argv, "--issue");
   const url = getArg(argv, "--url");
   const scheduled = argv.includes("--scheduled");
+  const kind = getArg(argv, "--kind");
+
+  if (kind !== undefined) {
+    if (kind !== "save_worthy" || issueArg || scheduled) {
+      throw new Error(USAGE);
+    }
+    const result = await generateXPost({ kind });
+    printResult(result);
+    return;
+  }
 
   if (url && !issueArg) {
     throw new Error(USAGE);

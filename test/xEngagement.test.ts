@@ -395,5 +395,8 @@ describe("reply guide for Claude prompts", () => {
     expect(guide).toContain("保存したくなる一行");
     expect(guide).toContain("文型・書き出し・語尾");
     expect(guide).toContain("丸く収めるだけで終わらない");
+    expect(guide).toContain("「貼れるか?」テスト");
+    expect(guide).toContain("昇格モード");
+    expect(guide).toContain("書き出し・文型・語尾が重なって");
   });
 });
