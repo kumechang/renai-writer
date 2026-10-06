@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "../db/client";
+import type { FollowerTrendRow } from "../xPoster/accountSnapshot";
 
 export type HealthCheckId =
   | "posts_generated"
   | "posts_published"
   | "posts_pending_approval"
+  | "account_snapshots_recorded"
   | "metrics_collected"
   | "posting_time_weights_updated"
   | "trend_words_captured"
@@ -62,11 +64,12 @@ export function countAlerts(results: HealthCheckResult[], failedRuns: FailedRunC
 }
 
 export async function collectOutputCounts(since: Date): Promise<Record<HealthCheckId, number>> {
-  const [generated, published, pending, metrics, weights, trends, watched] = await Promise.all([
+  const [generated, published, pending, snapshots, metrics, weights, trends, watched] = await Promise.all([
     prisma.xPost.count({ where: { createdAt: { gte: since } } }),
     prisma.xPost.count({ where: { status: "posted", createdAt: { gte: since } } }),
     // 承認待ちは、期間に関係なく、溜まっている件数を見る。
     prisma.xPost.count({ where: { status: "pending_approval" } }),
+    prisma.accountSnapshot.count({ where: { capturedAt: { gte: since } } }),
     prisma.xPostMetric.count({ where: { collectedAt: { gte: since } } }),
     prisma.postingTimeWeight.count({ where: { updatedAt: { gte: since } } }),
     prisma.trendWord.count({ where: { capturedAt: { gte: since } } }),
@@ -76,6 +79,7 @@ export async function collectOutputCounts(since: Date): Promise<Record<HealthChe
     posts_generated: generated,
     posts_published: published,
     posts_pending_approval: pending,
+    account_snapshots_recorded: snapshots,
     metrics_collected: metrics,
     posting_time_weights_updated: weights,
     trend_words_captured: trends,
@@ -174,12 +178,35 @@ export function buildShowcaseSection(posts: ShowcasePost[]): string[] {
   return lines;
 }
 
+export function buildFollowerSection(trend: FollowerTrendRow[]): string[] {
+  const lines: string[] = [];
+  lines.push("## フォロワー数の推移(日次の記録)");
+  lines.push("");
+  if (trend.length === 0) {
+    lines.push("まだ記録がありません(毎日の指標収集で、フォロワー数が記録されます)。");
+    return lines;
+  }
+  const fmt = (n: number | null): string => (n === null ? "-" : n > 0 ? `+${n}` : String(n));
+  const total = trend.reduce((sum, r) => sum + (r.delta ?? 0), 0);
+  lines.push(`直近${trend.length}件の記録で、${trend[0].date}から${trend[trend.length - 1].date}までの増減: ${fmt(total)}人(現在 ${trend[trend.length - 1].followers}人)`);
+  lines.push("");
+  lines.push("| 日付 | フォロワー | 前の記録との差 | 記録元 |");
+  lines.push("| --- | --- | --- | --- |");
+  for (const r of trend) {
+    lines.push(`| ${r.date} | ${r.followers} | ${fmt(r.delta)} | ${r.source === "manual" ? "手入力" : "API"} |`);
+  }
+  lines.push("");
+  lines.push("フォローの増減は、投稿別の「新しいフォロー」ではなく、この数字を見る(投稿別の数字は実際より大きく少なく出る)。");
+  return lines;
+}
+
 export function buildHealthReport(input: {
   now: Date;
   windowDays: number;
   results: HealthCheckResult[];
   failedRuns: FailedRunCount[] | null;
   showcase?: ShowcasePost[];
+  followerTrend?: FollowerTrendRow[];
 }): string {
   const lines: string[] = [];
   const alerts = countAlerts(input.results, input.failedRuns);
@@ -209,6 +236,10 @@ export function buildHealthReport(input: {
     for (const f of input.failedRuns) lines.push(`- ${f.workflow}: ${f.failures}件`);
   }
   lines.push("");
+  if (input.followerTrend) {
+    lines.push(...buildFollowerSection(input.followerTrend));
+    lines.push("");
+  }
   if (input.showcase) {
     lines.push(...buildShowcaseSection(input.showcase));
     lines.push("");

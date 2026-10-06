@@ -8,6 +8,7 @@ import { appendFileSync } from "node:fs";
 import { prisma } from "../db/client";
 import { createIssue } from "../lib/github";
 import { parseGithubRepository } from "../xPoster/env";
+import { collectFollowerTrend } from "../xPoster/accountSnapshot";
 import {
   buildHealthReport,
   collectOutputCounts,
@@ -34,7 +35,8 @@ async function main() {
   const failedRuns = repo ? await fetchFailedRunCounts(repo.owner, repo.repo, since, process.env.GITHUB_TOKEN) : null;
 
   const showcase = await collectShowcasePosts(10);
-  const report = buildHealthReport({ now, windowDays: config.windowDays, results, failedRuns, showcase });
+  const followerTrend = await collectFollowerTrend(14, now);
+  const report = buildHealthReport({ now, windowDays: config.windowDays, results, failedRuns, showcase, followerTrend });
   console.log(report);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${report}\n`);
 
